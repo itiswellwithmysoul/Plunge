@@ -221,7 +221,7 @@ page = """<!DOCTYPE html>
 <meta property="og:image" content="https://itiswellwithmysoul.github.io/Plunge/og.png">
 <meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%276%27 fill=%27%23F6F5F1%27/%3E%3Crect x=%279%27 y=%279%27 width=%2714%27 height=%2714%27 rx=%272%27 fill=%27%23C99E28%27/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%276%27 fill=%27%23F6F5F1%27/%3E%3Crect x=%279%27 y=%279%27 width=%2714%27 height=%2714%27 rx=%272%27 fill=%27%231A8C7C%27/%3E%3C/svg%3E">
 
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
 <style>
@@ -236,7 +236,7 @@ body{background:var(--bg);color:var(--ink);font:13px/1.4 var(--f-sans);-webkit-f
 .brand input{font:600 11px var(--f-sans);letter-spacing:.04em;color:var(--ink);background:var(--card);border:1px solid var(--ink);padding:4px 6px;color-scheme:light;border-radius:0}
 .hero h1{font:800 30px/1 var(--f-sans);letter-spacing:-.035em}
 .hero h1 span{font-size:17px;letter-spacing:-.01em;margin-left:4px;color:var(--lead)}
-.hero h1{color:var(--ink)}.hero.stop h1 span{color:var(--down)}.hero.warn h1 span{color:var(--warn)}.hero.go h1 span{color:var(--up)}.hero.info h1 span{color:var(--gold)}
+.hero h1{color:var(--ink)}.hero.stop h1 span{color:var(--down)}.hero.warn h1 span{color:var(--warn)}.hero.go h1 span{color:var(--up)}.hero.info h1 span{color:var(--muted)}
 .dl{display:flex;justify-content:space-between;margin-top:5px;font-size:11.5px}.dl em{font-style:normal;color:var(--muted)}
 .dl button{font:600 9.5px/1 var(--f-sans);letter-spacing:.12em;text-transform:uppercase;color:var(--teal);background:none;border:0;cursor:pointer;padding:0}
 .card{background:var(--card);border:1px solid var(--line);box-shadow:0 1px 0 rgba(15,27,45,.04),0 8px 24px -18px rgba(15,27,45,.25);border-top:3px solid var(--c);padding:10px 11px 11px;display:grid;gap:7px}
@@ -269,12 +269,12 @@ a.t.stop b{color:var(--down)}a.t.warn b{color:var(--warn)}
 .site{position:sticky;top:0;z-index:5;background:rgba(246,245,241,.92);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--line)}
 .site .bar{max-width:1120px;margin:0 auto;padding:10px 12px;display:flex;align-items:center;gap:14px}
 .site .name{white-space:nowrap;display:flex;align-items:center;gap:8px;font:800 15px/1 var(--f-sans);letter-spacing:-.01em;color:var(--ink);text-decoration:none}
-.site .name i{width:12px;height:12px;background:var(--gold);border-radius:2px;display:inline-block}
+.site .name i{width:12px;height:12px;background:var(--teal);border-radius:2px;display:inline-block}
 .site nav{display:flex;gap:14px;margin-left:auto}.site nav + .pick{margin-left:0}.site nav a{font:600 11px/1 var(--f-sans);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);text-decoration:none}.site nav a:hover{color:var(--ink)}
 .pick{display:flex;align-items:center;gap:6px;margin-left:auto}@media (max-width:620px){.site nav{display:none}.pick{margin-left:auto!important}}
 .hero h1 span{display:block;margin:6px 0 0!important;font-size:19px!important}.pick span{display:none}
 .pick input{font:600 12px var(--f-sans);color:var(--ink);background:var(--card);border:1px solid var(--ink);padding:5px 7px;border-radius:0;color-scheme:light}
-.eyebrow{display:block;font:600 9.5px/1.3 var(--f-sans);letter-spacing:.16em;text-transform:uppercase;color:var(--gold);margin-bottom:8px}
+.eyebrow{display:block;font:600 9.5px/1.3 var(--f-sans);letter-spacing:.16em;text-transform:uppercase;color:var(--teal);margin-bottom:6px}
 .hero{padding:14px 0 4px}
 .shead{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:4px 10px;margin-top:14px}
 .shead h2{font:700 24px/1.05 var(--f-sans);letter-spacing:-.025em}.shead span{font:600 9.5px/1.2 var(--f-sans);letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
@@ -285,33 +285,23 @@ a.t.stop b{color:var(--down)}a.t.warn b{color:var(--warn)}
 .glance strong{display:block;font:400 24px/1.1 var(--f-serif);color:var(--ink)}
 .card.c-blue{border-top-color:var(--blue)}
 @media (min-width:760px){
- .site .bar{padding:14px 24px}.site .name{font-size:18px}.site nav{gap:26px}.site nav a{font-size:12px}.pick span{display:inline;font:600 10px var(--f-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}.pick input{font-size:13px;padding:7px 10px}
- .hero{padding:40px 0 10px}.eyebrow{font-size:11px;margin-bottom:14px}
- .glance{grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;margin-top:26px}.glance strong{font-size:34px}.glance div{font-size:13px}
- .shead{margin-top:34px}.shead h2{font-size:clamp(30px,3.6vw,40px)}.shead span{font-size:10.5px}
- #conditions + .card .grid{grid-template-columns:repeat(4,minmax(0,1fr))}
-
- #tide + .card{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.5fr);column-gap:34px;row-gap:12px;align-items:start}
- #tide + .card .kick{grid-column:1/-1}
- #tide + .card .now{grid-column:1;grid-row:2;grid-template-columns:1fr;gap:12px}
- #tide + .card .sub{grid-column:1;grid-row:3}
- #tide + .card #rec{grid-column:1;grid-row:4}
- #tide + .card #tc{grid-column:2;grid-row:2/5}
- #tide + .card .ro{grid-column:2;grid-row:5}
- #tide + .card .big{font-size:96px}
+ .site .bar{padding:10px 24px}.site .name{font-size:17px}.site nav{gap:24px}.site nav a{font-size:11.5px}.pick span{display:inline;font:600 10px var(--f-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}.pick input{font-size:13px;padding:6px 9px}
+ .hero{padding:14px 0 2px}.eyebrow{font-size:10px;margin-bottom:6px}
+ .hero h1 span{display:inline!important;margin:0 0 0 10px!important}
+ #conditions .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media (min-width:760px){
  body{font-size:14px}
- .wrap{max-width:1120px;padding:22px 24px 28px;gap:14px}
+ .wrap{max-width:1180px;padding:4px 24px 20px;gap:10px}
  .brand .name{font-size:16px}.brand input{font-size:13px;padding:7px 10px}
- .hero h1{font-size:clamp(40px,5.4vw,64px)}.hero h1 span{display:block;font-size:clamp(22px,2.6vw,30px);margin:6px 0 0}
- .dl{font-size:13.5px;margin-top:10px}
- .cols{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:14px;align-items:start}
- .card{padding:18px 20px 20px;gap:12px}
+ .hero h1{font-size:clamp(34px,3.6vw,44px)}.hero h1 span{font-size:clamp(17px,1.8vw,22px)!important}
+ .dl{font-size:12.5px;margin-top:6px}
+ .cols{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:12px;align-items:stretch}.cols .card{align-content:start}
+ .card{padding:14px 18px 16px;gap:9px}
  .kick{font-size:10.5px}
- .big{font-size:72px}.nowtx{font-size:14px}
+ .big{font-size:60px}.nowtx{font-size:14px}
  .ro{font-size:12.5px}.sub b{font-size:13px}
- .grid{gap:10px}a.t{padding:10px 12px 11px}a.t b{font-size:28px}.tk{font-size:13px}.ts{font-size:11.5px}
+ .grid{gap:8px}a.t{padding:8px 11px 9px}a.t b{font-size:25px}.tk{font-size:13px}.ts{font-size:11.5px}
  .acols{grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}
  .about h2{font-size:24px}.acols p{font-size:13px}
  .foot{font-size:11px}
@@ -323,11 +313,10 @@ a.t.stop b{color:var(--down)}a.t.warn b{color:var(--warn)}
   <label class="pick"><span>Day</span><input id="day" type="date" aria-label="Pick a day"></label>
 </div></header>
 <div class="wrap">
-<section class="hero" id="hero"><span class="eyebrow">Fort Worden · Port Townsend · cold-plunge conditions</span><h1 id="h1"></h1><div class="dl"><b id="dlabel"></b><em id="asof"></em></div>
-  <div class="glance" id="glance"></div></section>
+<section class="hero" id="hero"><span class="eyebrow">Fort Worden · Port Townsend · cold-plunge conditions</span><h1 id="h1"></h1><div class="dl"><b id="dlabel"></b><em id="asof"></em></div></section>
 <div class="stale" id="stale" hidden></div>
-<div class="shead" id="tide"><h2>The tide.</h2><span>Measured vs predicted · NOAA 9444900</span></div>
-<section class="card c-teal">
+<main class="cols">
+<section class="card c-teal" id="tide">
   <div class="kick"><span id="kick"></span><b>NOAA 9444900</b></div>
   <div class="now"><div class="big"><span id="big"></span><small>ft</small></div><div class="nowtx" id="bigtx"></div></div>
   <svg id="tc" viewBox="0 0 320 104" role="img" aria-label="Predicted and measured tide"></svg>
@@ -335,11 +324,12 @@ a.t.stop b{color:var(--down)}a.t.warn b{color:var(--warn)}
   <div class="sub"><span>Peak vs records</span><b id="recline"></b></div>
   <svg id="rec" viewBox="0 0 320 42" aria-label="Peak water level compared with flood level and records"></svg>
 </section>
-<div class="shead" id="conditions"><h2>Conditions.</h2><span>Tap any tile for the live source</span></div>
-<section class="card c-blue">
+<section class="card c-blue" id="conditions">
+  <div class="kick"><span>Conditions</span><b>Tap any tile for live</b></div>
   
   <div class="grid" id="grid"></div>
 </section>
+</main>
 <section class="about" id="guide">
   <div class="shead"><h2>How to read the board.</h2><span>Colors flag what's unusual</span></div>
   <div class="acols">
@@ -406,7 +396,7 @@ function render(k){
   /* tiles */
   var g=document.getElementById('grid');
   g.innerHTML=SS.tiles.length?SS.tiles.map(function(t){return '<a class="t '+t.st+'" href="'+t.h+'" target="_blank" rel="noopener"><span class="tk">'+esc(t.l)+'<em>'+esc(t.kk)+'</em></span><b>'+esc(t.v)+'</b><span class="ts">'+esc(t.s)+'</span></a>';}).join(''):'<div class="empty">Conditions are stored for past days and today. For days ahead, the chart shows predicted tides only.</div>';
-  var gl=document.getElementById('glance'),pick=function(k){return SS.tiles.filter(function(t){return t.k===k;})[0];};
+  var gl=document.getElementById('glance')||{},pick=function(k){return SS.tiles.filter(function(t){return t.k===k;})[0];};
   gl.innerHTML=['resid','gust','wave','water'].map(pick).filter(Boolean).map(function(t){return '<div class="'+t.st+'"><b>'+esc(t.l)+'</b><strong>'+esc(t.v)+'</strong>'+esc(t.s)+'</div>';}).join('');
   document.getElementById('foot').textContent='NOAA 9444900 (prelim.) · NWS · NDBC 46088 · updated '+J.built+'. Past days show measured conditions. Colors flag unusual conditions, not official limits.';
 }
