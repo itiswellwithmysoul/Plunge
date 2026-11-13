@@ -208,6 +208,17 @@ page = """<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Fort Worden Beach Board</title>
+<meta name="description" content="Daily cold-plunge conditions for Fort Worden, Port Townsend: measured vs predicted tide, wind, waves, pressure and water temperature.">
+<meta name="theme-color" content="#0E0F11">
+<meta property="og:type" content="website">
+<meta property="og:title" content="The Plunge Board · Fort Worden">
+<meta property="og:description" content="Today's tide, wind, waves and water temperature at Fort Worden, with a go/no-go read for plungers.">
+<meta property="og:url" content="https://itiswellwithmysoul.github.io/Plunge/">
+<meta property="og:image" content="https://itiswellwithmysoul.github.io/Plunge/og.png">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230E0F11'/%3E%3Cpath d='M4 19c3 0 3-3 6-3s3 3 6 3 3-3 6-3 3 3 6 3' fill='none' stroke='%2345C2A6' stroke-width='3' stroke-linecap='round'/%3E%3Crect x='6' y='6' width='7' height='7' rx='1.5' fill='%239CC58E'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="og-icon.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
 <style>
 :root{--bg:#0E0F11;--card:#18191C;--line:#2A2C31;--ink:#F3F2EE;--muted:#A0A6AE;--faint:#6E747C;--coral:#F0674D;--blue:#5B95FF;--amber:#F2A93B;--teal:#45C2A6;--sage:#9CC58E;--up:#5CD69A;--down:#FF8F8F;--warn:#F2C14E;--lead:var(--sage);
@@ -244,10 +255,35 @@ a.t b{font:400 21px/1.1 var(--f-serif);font-variant-numeric:tabular-nums;white-s
 a.t.stop b{color:var(--down)}a.t.warn b{color:var(--warn)}
 .ts{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .empty{font-size:12px;color:var(--muted);padding:6px 0}
+.stale{border:1px solid var(--warn);color:var(--warn);font-size:11.5px;padding:7px 9px}
+.cols{display:grid;gap:8px}
+.about{border-top:1px solid var(--line);padding-top:12px;margin-top:6px}
+.about h2{font:700 18px/1.15 var(--f-sans);letter-spacing:-.015em;margin-bottom:8px}
+.acols{display:grid;gap:10px}
+.acols b{display:block;font:600 9.5px/1.3 var(--f-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--teal);margin-bottom:3px}
+.acols p{font-size:12.5px;color:var(--muted);line-height:1.5}
+@media (min-width:760px){
+ body{font-size:14px}
+ .wrap{max-width:1120px;padding:22px 24px 28px;gap:14px}
+ .brand .name{font-size:16px}.brand input{font-size:13px;padding:7px 10px}
+ .hero h1{font-size:clamp(40px,5.4vw,64px)}.hero h1 span{display:block;font-size:clamp(22px,2.6vw,30px);margin:6px 0 0}
+ .dl{font-size:13.5px;margin-top:10px}
+ .cols{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:14px;align-items:start}
+ .card{padding:18px 20px 20px;gap:12px}
+ .kick{font-size:10.5px}
+ .big{font-size:72px}.nowtx{font-size:14px}
+ .ro{font-size:12.5px}.sub b{font-size:13px}
+ .grid{gap:10px}a.t{padding:10px 12px 11px}a.t b{font-size:28px}.tk{font-size:13px}.ts{font-size:11.5px}
+ .acols{grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}
+ .about h2{font-size:24px}.acols p{font-size:13px}
+ .foot{font-size:11px}
+}
 .foot{font-size:9px;color:var(--faint);line-height:1.35;border-top:1px solid var(--line);padding-top:6px}
 </style></head><body><div class="wrap">
 <div class="brand"><span class="name"><i></i>The Plunge Board</span><input id="day" type="date" aria-label="Pick a day"></div>
 <div class="hero" id="hero"><h1 id="h1"></h1><div class="dl"><b id="dlabel"></b><em id="asof"></em></div></div>
+<div class="stale" id="stale" hidden></div>
+<main class="cols">
 <section class="card c-teal">
   <div class="kick"><span id="kick"></span><b>NOAA 9444900</b></div>
   <div class="now"><div class="big"><span id="big"></span><small>ft</small></div><div class="nowtx" id="bigtx"></div></div>
@@ -259,6 +295,16 @@ a.t.stop b{color:var(--down)}a.t.warn b{color:var(--warn)}
 <section class="card c-blue">
   <div class="kick"><span>02 / Conditions</span><b>Tap any tile for live</b></div>
   <div class="grid" id="grid"></div>
+</section>
+</main>
+<section class="about">
+  <h2>How to read the board</h2>
+  <div class="acols">
+    <div><b>Above prediction</b><p>Tide tables only know the moon and sun. Storms, low pressure and this winter's El Niño push the water higher. More than 6 inches over the tables is amber; more than a foot is red, when logs start to float.</p></div>
+    <div><b>Gusts and waves</b><p>Gusts over 20 mph are amber and over 25 red. Waves come from the New Dungeness buoy: 1–3 ft amber, over 3 ft red. At Fort Worden, wind from the north or west drives waves onto the beach; wind from the south or east flattens it but pushes floaters out.</p></div>
+    <div><b>Any red means no plunge</b><p>The bands are the group's rules of thumb, not official safety limits. Trust your eyes too: logs moving at the waterline, waves at the top of the beach, a fresh bluff slide, lightning or failing light all mean out.</p></div>
+    <div><b>Look back</b><p>Use the date box to see any day this month. Past days show what was measured; days ahead show predicted tides only. The board rebuilds every morning before 6 am.</p></div>
+  </div>
 </section>
 <div class="foot" id="foot"></div>
 </div>
@@ -328,6 +374,7 @@ svg.addEventListener('pointerdown',function(e){show(evm(e));});
 svg.addEventListener('pointermove',function(e){if(e.buttons||e.pointerType==='mouse')show(evm(e));});
 svg.addEventListener('touchmove',function(e){show(evm(e));e.preventDefault();},{passive:false});
 inp.addEventListener('change',function(){if(J.summ[inp.value])render(inp.value);else inp.value=DD?SS.date:J.today;});
+var vt=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles'}).format(new Date());if(vt>J.today){var sb=document.getElementById('stale');sb.hidden=false;sb.textContent='Heads up: this board was last refreshed '+J.built+'. Today\u2019s readings aren\u2019t in yet, so tap a tile for live data.';}
 var h=(location.hash||'').replace('#d','');render(J.summ[h]?h:J.today);
 })();
 </script></body></html>"""
