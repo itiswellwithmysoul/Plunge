@@ -332,5 +332,6 @@ var h=(location.hash||'').replace('#d','');render(J.summ[h]?h:J.today);
 })();
 </script></body></html>"""
 page = page.replace("__DATA__", json.dumps(J, separators=(",", ":")).replace("</", "<\\/"))
-open("beach-board.html", "w").write(page)
+import os
+open(os.environ.get("BOARD_OUT", "index.html" if os.path.exists(".git") else "beach-board.html"), "w").write(page)
 print("built", k_today, "days", len(summ), "verdict", summ[k_today]["verdict"], f"{len(page)/1024:.0f} KB")
