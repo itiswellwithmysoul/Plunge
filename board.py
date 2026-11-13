@@ -139,7 +139,7 @@ for k in sorted(days):
     resid = (sum(rs[-30:]) / len(rs[-30:])) if is_today else (sum(rs) / len(rs) if rs else 0)
     peak_t, peak_h = max(D["obs"], key=lambda x: x[1])
     S["peak"] = [peak_t, peak_h]; S["resid"] = round(resid, 2)
-    st["resid"] = "warn" if resid >= 1.0 else "go"   # informational: high water is worth knowing, not a stop
+    st["resid"] = "stop" if resid >= 1.5 else ("warn" if resid >= 0.75 else "go")
     tiles.append(tile("resid", "Above prediction", "Gauge", f"{resid:+.1f} ft", f"{min(rs):+.1f} to {max(rs):+.1f} through the day" if rs else "", st["resid"]))
     day_b = [b for b in D["buoy"] if rise <= b[0] <= sset]
     if is_today:
@@ -163,13 +163,15 @@ for k in sorted(days):
     if D["press"]:
         pv = D["press"][-1][1] if is_today else min(v for t, v in D["press"])
         drop = press_drop(D["press"][-4:] if is_today else D["press"])
-        st["press"] = "stop" if drop <= -3 else ("warn" if drop < -0.5 else "go")
-        lvl = "high, settled" if pv >= 1020 else ("normal" if pv >= 1009 else ("lowish, unsettled" if pv >= 1000 else "low, stormy"))
+        lvl = "Stormy" if pv < 1000 else ("Unsettled" if pv < 1009 else ("Normal" if pv < 1020 else "Settled"))
+        st["press"] = "stop" if pv < 1000 else ("warn" if (pv < 1009 or drop <= -3) else "go")
         trend = "falling" if drop <= -1 else ("rising" if drop >= 1 else "steady")
-        tiles.append(tile("press", "Air pressure", "Gauge" + ("" if is_today else " · day low"), f"{pv:.0f} mb · {lvl.split(',')[0]}", f"{lvl.capitalize()} (normal ~1013) · {trend}", st["press"]))
+        lift = (1013 - pv) * 0.39
+        effect = f"adds ~{lift:.0f} in to the tide" if lift >= 1 else (f"lowers the tide ~{-lift:.0f} in" if lift <= -1 else "no effect on the tide")
+        tiles.append(tile("press", "Air pressure", "Gauge" + ("" if is_today else " · day low"), f"{lvl} · {pv:.0f} mb", f"{effect.capitalize()} · {trend}", st["press"]))
     if is_today:
         r12 = sum(q for t, q in qpf if now <= t <= now + dt.timedelta(hours=12) and q is not None)
-        st["rain"] = band(r12, 0.25, 1.0)
+        st["rain"] = band(r12, 0.5, 1.0)
         tiles.append(tile("rain", "Rain", "NWS · next 12 h", f"{r12:.2f} in", "runoff raises bacteria", st["rain"]))
     else:
         tiles.append(tile("rain", "Rain", "Measured", "—", "no rain gauge on record nearby", "info"))
@@ -302,7 +304,7 @@ a.t.stop b{color:var(--down)}a.t.warn b{color:var(--warn)}
  .big{font-size:60px}.nowtx{font-size:14px}
  .ro{font-size:12.5px}.sub b{font-size:13px}
  .grid{gap:8px}a.t{padding:8px 11px 9px}a.t b{font-size:25px}.tk{font-size:13px}.ts{font-size:11.5px}
- .acols{grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}
+ .acols{grid-template-columns:repeat(5,minmax(0,1fr));gap:18px}
  .about h2{font-size:24px}.acols p{font-size:13px}
  .foot{font-size:11px}
 }
@@ -333,7 +335,8 @@ a.t.stop b{color:var(--down)}a.t.warn b{color:var(--warn)}
 <section class="about" id="guide">
   <div class="shead"><h2>How to read the board.</h2><span>Colors flag what's unusual</span></div>
   <div class="acols">
-    <div><b>Above prediction</b><p>Tide tables only know the moon and sun. Storms, low pressure and this winter's El Niño push the water higher. A foot or more over the tables is flagged: the beach is narrower and logs can float. Air pressure plays in too: normal is about 1013 mb, and lower means stormier weather and higher water.</p></div>
+    <div><b>Above prediction</b><p>Tide tables only know the moon and sun. Storms, low pressure and this winter's El Niño push the water higher. Over 9 inches is amber and over 1.5 ft red: the beach gets narrower and logs can float.</p></div>
+    <div><b>Air pressure</b><p>Normal is about 1013 mb. Lower means stormier weather, and it lifts the sea: every millibar below normal adds about 0.4 inch to the tide. Under 1000 is red, 1000–1009 amber. Falling pressure means weather is moving in.</p></div>
     <div><b>Gusts and waves</b><p>Gusts over 20 mph are amber and over 25 red. Waves come from the New Dungeness buoy: 1–3 ft amber, over 3 ft red. At Fort Worden, wind from the north or west drives waves onto the beach; wind from the south or east flattens it but pushes floaters out.</p></div>
     <div><b>Your call</b><p>The colors flag what's unusual, not a rule: green is typical, amber is worth noticing, red is well outside normal. Whether to go in is up to you. Look at the beach too: logs moving at the waterline, waves at the top of the beach, a fresh bluff slide, lightning or failing light.</p></div>
     <div><b>Look back</b><p>Use the date box to see any day this month. Past days show what was measured; days ahead show predicted tides only. The board rebuilds every morning before 6 am.</p></div>
