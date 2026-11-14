@@ -150,6 +150,48 @@ NORM_W = normals("water_temperature"); NORM_A = normals("air_temperature")
 def temp_band(dev, g, r): a = abs(dev); return "go" if a < g else ("warn" if a < r else "stop")
 def dev_txt(dev): return ("▲ " if dev >= 0 else "▼ ") + f"{abs(dev):.1f}° {'above' if dev >= 0 else 'below'} normal"
 
+# ---------------- monthly records (records.json, kept current here) ----------------
+import os as _os
+REC_PATH = "records.json"
+REC = json.load(open(REC_PATH)) if _os.path.exists(REC_PATH) else {"since": {}, "all_time": {"wl_max": {"v": 12.0, "d": "2022-12-27"}}, "months": {str(m): {} for m in range(1, 13)}}
+MON = today.strftime("%b")
+def rbump(key, val, when, hi=True):
+    if val is None: return
+    r = REC["months"].setdefault(str(today.month), {}); cur = r.get(key)
+    if cur is None or (val > cur["v"] if hi else val < cur["v"]):
+        r[key] = {"v": round(val, 2), "d": when}
+for k_, D_ in days.items():
+    if not k_.startswith(today.strftime("%Y-%m")) or dt.date.fromisoformat(k_) > today: continue
+    for t_, h_ in D_["obs"]: rbump("wl_max", h_, k_)
+    for t_, v_ in D_["wt"]: rbump("wt_max", v_, k_); rbump("wt_min", v_, k_, False)
+    for t_, v_ in D_["at"]: rbump("at_max", v_, k_); rbump("at_min", v_, k_, False)
+    for t_, v_ in D_["press"]: rbump("p_max", v_, k_); rbump("p_min", v_, k_, False)
+    for b_ in D_["buoy"]:
+        if b_[1] is not None and 0 < b_[1] < 100: rbump("wave_max", b_[1], k_)
+        if b_[2] is not None and 0 < b_[2] < 140: rbump("gust_max", b_[2], k_)
+for k_, D_ in days.items():
+    for t_, h_ in D_["obs"]:
+        if h_ > REC["all_time"]["wl_max"]["v"]: REC["all_time"]["wl_max"] = {"v": round(h_, 2), "d": k_}
+RM = REC["months"].get(str(today.month), {}); SINCE = REC.get("since", {})
+def yr(d): return d[:4]
+def meter(val, normal, hi_key, lo_key, unit, nd, since_key, normal_lbl=None):
+    """How far today's value is from normal toward this month's record (two-sided when a low record exists)."""
+    if val is None or normal is None: return None
+    up = val >= normal or lo_key is None
+    r = RM.get(hi_key if up else lo_key)
+    if not r: return None
+    span = r["v"] - normal
+    f = 0.0 if span == 0 else max(0.0, min(1.0, (val - normal) / span))
+    word = "record" if up else "record low"
+    if (val >= r["v"]) if up else (val <= r["v"]):
+        txt = f"New {MON} {'record' if up else 'low'}" if r["d"][:7] == today.strftime("%Y-%m") else f"Ties {MON} {'record' if up else 'low'}"
+        f = 1.0
+    else:
+        gap = abs(r["v"] - val)
+        txt = f"{gap:.{nd}f}{unit} to {MON} {'record' if up else 'low'}"
+    since = SINCE.get(since_key)
+    return {"f": round(f, 3), "t": txt, "r": f"{word.capitalize()} {r['v']:.{nd}f}{unit} · {yr(r['d'])}" + (f" · since {since}" if since else "")}
+
 # ---------------- per-day summaries ----------------
 summ = {}
 k_today = key(now)
@@ -171,21 +213,25 @@ for k in sorted(days):
     peak_t, peak_h = max(D["obs"], key=lambda x: x[1])
     S["peak"] = [peak_t, peak_h]; S["resid"] = round(resid, 2)
     st["resid"] = "stop" if resid >= 1.5 else ("warn" if resid >= 0.75 else "go")
-    tiles.append(tile("resid", "Above prediction", "Gauge", f"{resid:+.1f} ft", f"{min(rs):+.1f} to {max(rs):+.1f} through the day" if rs else "", st["resid"]))
+    tiles.append(tile("resid", "Above prediction", "Gauge", f"{resid:+.1f} ft", f"Peak {peak_h:.1f} ft · {min(rs):+.1f} to {max(rs):+.1f} today" if rs else "", st["resid"]))
+    tiles[-1]["m"] = meter(peak_h, BENCH["mhhw"], "wl_max", None, " ft", 1, "wl")
     day_b = [b for b in D["buoy"] if rise <= b[0] <= sset]
     if is_today:
         g6 = max([g for t, g in gusts if now <= t <= now + dt.timedelta(hours=6) and g is not None] or [0])
         st["gust"] = band(g6, 20, 26)
         tiles.append(tile("gust", "Gusts", "NWS · next 6 h", f"{g6:.0f} mph", f"{hr_now['windDirection']} {hr_now['windSpeed']} now", st["gust"]))
+        tiles[-1]["m"] = meter(g6, 15, "gust_max", None, " mph", 0, "gust")
     else:
         bg = [b[2] for b in day_b if b[2] is not None]
         g = max(bg) if bg else None
         st["gust"] = band(g, 20, 26) if g is not None else "none"
         tiles.append(tile("gust", "Gusts", "Buoy · daylight max", f"{g:.0f} mph" if g is not None else "—", "measured at New Dungeness", st["gust"]))
+        tiles[-1]["m"] = meter(g, 15, "gust_max", None, " mph", 0, "gust")
     waves = [b[1] for b in (day_b if not is_today else D["buoy"][-6:]) if b[1] is not None]
     wv = (waves[-1] if is_today else max(waves)) if waves else None
     st["wave"] = band(wv, 1, 3) if wv is not None else "none"
     tiles.append(tile("wave", "Waves", "Buoy 46088" + ("" if is_today else " · day max"), f"{wv:.1f} ft" if wv is not None else "—", "New Dungeness", st["wave"]))
+    tiles[-1]["m"] = meter(wv, 0.5, "wave_max", None, " ft", 1, "wave")
     if is_today:
         st["alert"] = "stop" if any(w in a for a in alerts for w in ("Gale Warning", "Storm Warning", "Hurricane")) else ("warn" if alerts else "go")
         tiles.append(tile("alert", "Marine alerts", "NWS", alerts[0] if alerts else "None", " + ".join(alerts[1:]) or "Admiralty Inlet", st["alert"]))
@@ -200,6 +246,7 @@ for k in sorted(days):
         lift = (1013 - pv) * 0.39
         effect = f"adds ~{lift:.0f} in to tide" if lift >= 1 else (f"lowers tide ~{-lift:.0f} in" if lift <= -1 else "no tide effect")
         tiles.append(tile("press", "Air pressure", "Gauge" + ("" if is_today else " · day low"), f"{pv:.0f} mb", f"{lvl} · {effect}" + ("" if trend == "steady" else f" · {trend}"), st["press"]))
+        tiles[-1]["m"] = meter(pv, 1013, "p_max", "p_min", " mb", 0, "p")
     if is_today:
         r12 = sum(q for t, q in qpf if now <= t <= now + dt.timedelta(hours=12) and q is not None)
         st["rain"] = band(r12, 0.5, 1.0)
@@ -212,6 +259,7 @@ for k in sorted(days):
         if nw is not None:
             dv = wt - nw; st["water"] = temp_band(dv, 1.5, 3.0)
             tiles.append(tile("water", "Water", "Gauge" + ("" if is_today else " · day avg"), f"{wt:.1f}°F", f"Normal {'today' if is_today else 'that day'} {nw:.1f}°", st["water"], dev_txt(dv)))
+            tiles[-1]["m"] = meter(wt if is_today else (max(v for t, v in D["wt"]) if dv >= 0 else min(v for t, v in D["wt"])), nw, "wt_max", "wt_min", "°", 1, "wt")
         else:
             tiles.append(tile("water", "Water", "Gauge", f"{wt:.1f}°F", "", "info"))
     if D["at"]:
@@ -220,6 +268,7 @@ for k in sorted(days):
         if na is not None:
             dv = at - na; st["air"] = temp_band(dv, 5, 10)
             tiles.append(tile("air", "Air", "Gauge" + ("" if is_today else " · day avg"), f"{at:.0f}°F", f"Normal {'today' if is_today else 'that day'} {na:.1f}°", st["air"], dev_txt(dv)))
+            tiles[-1]["m"] = meter(at if is_today else (max(v for t, v in D["at"]) if dv >= 0 else min(v for t, v in D["at"])), na, "at_max", "at_min", "°", 0, "at")
     WARMCOLD = lambda n: ("warm " if "▲" in next(t["d"] for t in tiles if t["k"] == n) else "cold ") + ("water" if n == "water" else "air")
     WORDS = {"gust": "gusty", "wave": "choppy", "resid": "high water", "alert": "marine alert up", "rain": "wet", "press": "pressure falling"}
     flagged = sorted([n for n, x in st.items() if x in ("warn", "stop")], key=lambda n: -ORDER[st[n]])
@@ -246,7 +295,8 @@ month_peak = max((s["peak"][1], k) for k, s in summ.items() if "peak" in s)
 BUILD = now.strftime("%Y%m%d%H%M%S")
 lb = next(((k2, b) for k2 in sorted(days, reverse=True) for b in reversed(days[k2]["buoy"]) if b[1] is not None), None)
 J_BUOY = {"ft": lb[1][1], "at": clock(lb[1][0]) + ("" if lb[0] == k_today else " " + dt.date.fromisoformat(lb[0]).strftime("%b %-d"))} if lb else None
-J = {"build": BUILD, "normw": NORM_W, "norma": NORM_A, "href": HREF, "buoy": J_BUOY, "nws": {"hourly": pt["forecastHourly"], "grid": pt["forecastGridData"]}, "days": days, "summ": summ, "today": k_today, "first": key(dt.datetime.combine(first, dt.time(), PST)), "last": key(dt.datetime.combine(ahead, dt.time(), PST)),
+json.dump(REC, open(REC_PATH, "w"), indent=1)
+J = {"build": BUILD, "rec": RM, "since": SINCE, "mon": MON, "ym": today.strftime("%Y-%m"), "alltime": REC["all_time"]["wl_max"], "normw": NORM_W, "norma": NORM_A, "href": HREF, "buoy": J_BUOY, "nws": {"hourly": pt["forecastHourly"], "grid": pt["forecastGridData"]}, "days": days, "summ": summ, "today": k_today, "first": key(dt.datetime.combine(first, dt.time(), PST)), "last": key(dt.datetime.combine(ahead, dt.time(), PST)),
      "bench": BENCH, "built": now.strftime("%b %-d, %-I:%M %p").replace("AM", "am").replace("PM", "pm"), "mpeak": month_peak}
 
 # ---------------- page ----------------
@@ -295,12 +345,12 @@ svg{display:block;width:100%;height:auto;overflow:visible}svg text{font-family:v
 .sub{display:flex;justify-content:space-between;align-items:baseline;gap:6px;font:600 8.5px/1.3 var(--f-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);border-top:1px solid var(--line);padding-top:7px}
 .sub b{color:var(--ink);font-size:11px;letter-spacing:0;text-transform:none;font-weight:600;text-align:right}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-a.t{display:grid;text-decoration:none;color:inherit;background:#fff;border:1px solid var(--line);border-left:3px solid var(--s);padding:5px 8px 6px;min-width:0}
+a.t{display:grid;grid-template-columns:minmax(0,1fr);overflow:hidden;text-decoration:none;color:inherit;background:#fff;border:1px solid var(--line);border-left:3px solid var(--s);padding:5px 8px 6px;min-width:0}
 a.t.go{--s:var(--up)}a.t.warn{--s:var(--warn)}a.t.stop{--s:var(--down)}a.t.info,a.t.none{--s:var(--line)}
 .tk{display:flex;justify-content:space-between;gap:4px;font-weight:600;font-size:11px;white-space:nowrap}
 .tk em{font:600 8px/1.6 var(--f-sans);font-style:normal;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);overflow:hidden;text-overflow:ellipsis}
 a.t b{font:800 28px/1.05 var(--f-sans);letter-spacing:-.04em;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:2px 0 1px}a.t b small{font:600 12.5px var(--f-sans);letter-spacing:0;color:var(--muted);margin-left:3px}a.t b.word{font-size:20px;letter-spacing:-.02em;line-height:1.3}
-a.t.stop b{color:var(--down)}a.t.warn b{color:var(--warn)}.dev{font:700 11.5px/1.3 var(--f-sans);color:var(--muted)}a.t.stop .dev{color:var(--down)}a.t.warn .dev{color:var(--warn)}a.t.go .dev{color:var(--up)}
+a.t.stop b{color:var(--down)}a.t.warn b{color:var(--warn)}.dev{font:700 11.5px/1.3 var(--f-sans);color:var(--muted)}.mtr{display:flex;align-items:center;gap:7px;margin-top:5px;min-width:0;max-width:100%}.mtr strong{font:700 9.5px/1.2 var(--f-sans);color:var(--muted);white-space:nowrap;flex:none}.mtr.rec strong{color:var(--down)}.trk{display:block;flex:1 1 auto;min-width:36px;position:relative;height:5px;border-radius:3px;background:linear-gradient(90deg,#E8E6E0 0%,#E8E6E0 50%,#F1DFB0 72%,#F2C2BA 100%)}.trk i{position:absolute;top:-4px;width:4px;height:13px;border-radius:2px;background:var(--ink);transform:translateX(-50%)}.mtr.rec .trk i{background:var(--down)}.ml{display:flex;justify-content:space-between;gap:6px;margin-top:4px;font-size:9.5px;color:var(--faint);white-space:nowrap}.ml strong{font:700 10px/1.2 var(--f-sans);color:var(--ink);overflow:hidden;text-overflow:ellipsis;min-width:0}.ml span{overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}.mtr.rec .ml strong{color:var(--down)}a.t.stop .dev{color:var(--down)}a.t.warn .dev{color:var(--warn)}a.t.go .dev{color:var(--up)}
 .ts{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .empty{font-size:12px;color:var(--muted);padding:6px 0}
 .stale{border:1px solid var(--warn);color:var(--warn);font-size:11.5px;padding:7px 9px}
@@ -381,7 +431,7 @@ a.t.stop b{color:var(--down)}a.t.warn b{color:var(--warn)}.dev{font:700 11.5px/1
     <div><b>Air pressure</b><p>Normal is about 1013 mb. Lower means stormier weather, and it lifts the sea: every millibar below normal adds about 0.4 inch to the tide. Under 1000 is red, 1000–1009 amber. Falling pressure means weather is moving in.</p></div>
     <div><b>Gusts and waves</b><p>Gusts over 20 mph are amber and over 25 red. Waves come from the New Dungeness buoy: 1–3 ft amber, over 3 ft red. At Fort Worden, wind from the north or west drives waves onto the beach; wind from the south or east flattens it but pushes floaters out.</p></div>
     <div><b>Your call</b><p>The colors flag what's unusual, not a rule: green is typical, amber is worth noticing, red is well outside normal. Whether to go in is up to you. Look at the beach too: logs moving at the waterline, waves at the top of the beach, a fresh bluff slide, lightning or failing light.</p></div>
-    <div><b>Temperature</b><p>Compared with normal for the date over the last 10 years. Water barely varies, so 1.5° off is amber and 3° red; air swings more, so 5° and 10°. Warmer or colder both count. Use the date box to look back over this month. The board refreshes before 6 am and again before 2 pm.</p></div>
+    <div><b>Temperature</b><p>Compared with normal for the date over the last 10 years. Water barely varies, so 1.5° off is amber and 3° red; air swings more, so 5° and 10°. Warmer or colder both count. Each tile's bar shows how close the reading is to this month's record at the station. Use the date box to look back over this month. The board refreshes before 6 am and again before 2 pm.</p></div>
   </div>
 </section>
 <footer class="foot" id="foot"></footer>
@@ -428,23 +478,24 @@ function render(k){
   /* records */
   var rec=document.getElementById('rec');while(rec.firstChild)rec.removeChild(rec.firstChild);
   var pk=SS.peak?SS.peak[1]:null,rl=document.getElementById('recline');
-  if(pk===null){var hs=P.map(function(p){return p[1];});pk=Math.max.apply(null,hs);rl.textContent='Predicted peak '+f1(pk)+' ft · '+(B.record-pk).toFixed(1)+' ft under record';}
-  else rl.textContent=f1(pk)+' ft at '+clock(SS.peak[0])+' · '+(B.record-pk).toFixed(1)+' ft under record';
+  if(pk===null){var hs=P.map(function(p){return p[1];});pk=Math.max.apply(null,hs);rl.textContent='Predicted peak '+f1(pk)+' ft · '+(J.alltime.v-pk).toFixed(1)+' ft under record';}
+  else rl.textContent=f1(pk)+' ft at '+clock(SS.peak[0])+' · '+(J.alltime.v-pk).toFixed(1)+' ft under record';
   var L=8,H=12.4;function X(v){return 4+(Math.max(L,Math.min(H,v))-L)/(H-L)*312;}
   mk('rect',{x:4,y:16,width:312,height:8,fill:'#ECEAE3'},rec);
   mk('rect',{x:X(B.minor_flood),y:16,width:316-X(B.minor_flood),height:8,fill:'#C99E28',opacity:.18},rec);
   mk('rect',{x:4,y:16,width:X(pk)-4,height:8,fill:SS.peak?'#1A8C7C':'#7FBFB4'},rec);
-  [[B.mhhw,'Avg high','#8C94A3',0],[B.hat,'Max tide','#8C94A3',1],[B.minor_flood,'Flood','#B98200',0],[B.nov_peak,"Nov '21",'#5A6577',1],[B.record,'Record 12.0','#D23C2F',0]].forEach(function(m){
+  [[B.mhhw,'Avg high','#8C94A3',0],[B.hat,'Max tide','#8C94A3',1],[B.minor_flood,'Flood','#B98200',0],[J.rec.wl_max?J.rec.wl_max.v:B.nov_peak,'Highest '+J.mon,'#5A6577',1],[J.alltime.v,'Record '+J.alltime.v.toFixed(1),'#D23C2F',0]].forEach(function(m){
     var xx=X(m[0]);mk('line',{x1:xx,x2:xx,y1:m[3]?12:16,y2:m[3]?24:28,stroke:m[2],'stroke-width':1.4},rec);
     var t=mk('text',{x:xx,y:m[3]?9:38,'text-anchor':xx>290?'end':'middle','font-size':8.5,fill:m[2]},rec);t.textContent=m[1];});
   mk('circle',{cx:X(pk),cy:20,r:4.5,fill:'#FFFFFF',stroke:'#1A8C7C','stroke-width':2},rec);
   /* tiles */
   var g=document.getElementById('grid');
+  function mtrHtml(m){if(!m)return '';var f=Math.round(m.f*100);return '<span class="mtr'+(m.f>=1?' rec':'')+'" title="'+esc(m.r)+'"><span class="trk"><i style="left:'+f+'%"></i></span><strong>'+esc((m.p?m.p+' · ':'')+m.t)+'</strong></span>';}
   function val(v){var m=String(v).match(/^([+\\-−]?[\\d.,]+)\\s*(.*)$/);return m?'<b>'+esc(m[1])+(m[2]?'<small>'+esc(m[2])+'</small>':'')+'</b>':'<b class="word">'+esc(v)+'</b>';}
-  g.innerHTML=SS.tiles.length?SS.tiles.map(function(t){return '<a class="t '+t.st+'" href="'+t.h+'" target="_blank" rel="noopener"><span class="tk">'+esc(t.l)+'<em>'+esc(t.kk)+'</em></span>'+val(t.v)+(t.d?'<span class="dev">'+esc(t.d)+'</span>':'')+'<span class="ts">'+esc(t.s)+'</span></a>';}).join(''):'<div class="empty">Conditions are stored for past days and today. For days ahead, the chart shows predicted tides only.</div>';
+  g.innerHTML=SS.tiles.length?SS.tiles.map(function(t){return '<a class="t '+t.st+'" href="'+t.h+'" target="_blank" rel="noopener"><span class="tk">'+esc(t.l)+'<em>'+esc(t.kk)+'</em></span>'+val(t.v)+(t.d?'<span class="dev">'+esc(t.d)+'</span>':'')+'<span class="ts">'+esc(t.s)+'</span>'+mtrHtml(t.m)+'</a>';}).join(''):'<div class="empty">Conditions are stored for past days and today. For days ahead, the chart shows predicted tides only.</div>';
   var gl=document.getElementById('glance')||{},pick=function(k){return SS.tiles.filter(function(t){return t.k===k;})[0];};
   gl.innerHTML=['resid','gust','wave','water'].map(pick).filter(Boolean).map(function(t){return '<div class="'+t.st+'"><b>'+esc(t.l)+'</b><strong>'+esc(t.v)+'</strong>'+esc(t.s)+'</div>';}).join('');
-  document.getElementById('foot').textContent='NOAA 9444900 (prelim.) · NWS · NDBC 46088 · tide, weather and alerts load live; waves and history as of '+J.built+'. Past days show measured conditions. Colors flag unusual conditions, not official limits.';
+  document.getElementById('foot').textContent='NOAA 9444900 (prelim.) · NWS · NDBC 46088 · tide, weather and alerts load live; waves and history as of '+J.built+'. Past days show measured conditions. Colors flag unusual conditions, not official limits. Records: water level since '+J.since.wl+', water temp since '+J.since.wt+', air and pressure since '+J.since.p+', buoy since '+J.since.wave+'.';
 }
 function show(m){m=Math.max(0,Math.min(DAY,m));var p=interp(DD.pred,m);if(!p)return;cur.setAttribute('opacity',1);cl.setAttribute('x1',x(m));cl.setAttribute('x2',x(m));cc.setAttribute('cx',x(m));cc.setAttribute('cy',y(p[0]));
   var o=null;DD.obs.forEach(function(q){if(Math.abs(q[0]-m)<=3)o=q[1];});
@@ -484,15 +535,20 @@ function liveToday(){
     var rec=rs.slice(-30),resid=rec.reduce(function(a,b){return a+b;},0)/rec.length;
     var last=obs[obs.length-1],peak=obs.reduce(function(a,b){return b[1]>a[1]?b:a;});
     var st={},tiles=[],H=J.href;
+    function mtrJ(val,normal,hk,lk,unit,nd,sk){if(val==null||normal==null)return null;var up=val>=normal||!lk,r=J.rec[up?hk:lk];if(!r)return null;
+      var span=r.v-normal,f=span===0?0:Math.max(0,Math.min(1,(val-normal)/span)),word=up?'record':'record low',txt;
+      if(up?val>=r.v:val<=r.v){txt=(val===r.v&&r.d.slice(0,7)!==J.ym?'Ties ':'New ')+J.mon+' '+(up?'record':'low');f=1;}else{txt=Math.abs(r.v-val).toFixed(nd)+unit+' to '+J.mon+' '+(up?'record':'low');}
+      var sn=J.since[sk];return {f:f,t:txt,r:word.charAt(0).toUpperCase()+word.slice(1)+' '+r.v.toFixed(nd)+unit+' · '+r.d.slice(0,4)+(sn?' · since '+sn:'')};}
+    
     st.resid=resid>=1.5?'stop':(resid>=0.75?'warn':'go');
-    tiles.push({k:'resid',l:'Above prediction',kk:'Gauge · live',v:sgn(resid)+' ft',s:sgn(Math.min.apply(null,rs))+' to '+sgn(Math.max.apply(null,rs))+' through the day',st:st.resid,d:'',h:H.resid});
+    tiles.push({k:'resid',l:'Above prediction',kk:'Gauge · live',v:sgn(resid)+' ft',s:'Peak '+peak[1].toFixed(1)+' ft · '+sgn(Math.min.apply(null,rs))+' to '+sgn(Math.max.apply(null,rs))+' today',st:st.resid,d:'',h:H.resid,m:mtrJ(peak[1],8.52,'wl_max',null,' ft',1,'wl')});
     var hp=R[6]&&R[6].properties.periods.filter(function(p){return new Date(p.startTime).getTime()<=nowT&&nowT<new Date(p.endTime).getTime();})[0];
     if(R[7]){var gs=expand(R[7].properties.windGust.values,1/1.609).filter(function(g){return g[0]>=nowT-36e5&&g[0]<=nowT+6*36e5&&g[1]!=null;}).map(function(g){return g[1];});
       var g6=gs.length?Math.max.apply(null,gs):0;st.gust=bandJ(g6,20,26);
-      tiles.push({k:'gust',l:'Gusts',kk:'NWS · next 6 h',v:f0(g6)+' mph',s:hp?(hp.windDirection+' '+hp.windSpeed+' now'):'',st:st.gust,d:'',h:H.gust});
+      tiles.push({k:'gust',l:'Gusts',kk:'NWS · next 6 h',v:f0(g6)+' mph',s:hp?(hp.windDirection+' '+hp.windSpeed+' now'):'',st:st.gust,d:'',h:H.gust,m:mtrJ(g6,15,'gust_max',null,' mph',0,'gust')});
       var q=expand(R[7].properties.quantitativePrecipitation.values,1/25.4).filter(function(g){return g[0]>=nowT-36e5&&g[0]<=nowT+12*36e5&&g[1]!=null;});
       var r12=q.reduce(function(a,b){return a+b[1];},0);st.rain=bandJ(r12,0.5,1.0);var rainT={k:'rain',l:'Rain',kk:'NWS · next 12 h',v:r12.toFixed(2)+' in',s:'runoff raises bacteria',st:st.rain,d:'',h:H.rain};}
-    var wv=J.buoy;if(wv){st.wave=bandJ(wv.ft,1,3);tiles.push({k:'wave',l:'Waves',kk:'Buoy 46088',v:wv.ft.toFixed(1)+' ft',s:'New Dungeness · as of '+wv.at,st:st.wave,d:'',h:H.wave});}
+    var wv=J.buoy;if(wv){st.wave=bandJ(wv.ft,1,3);tiles.push({k:'wave',l:'Waves',kk:'Buoy 46088',v:wv.ft.toFixed(1)+' ft',s:'New Dungeness · as of '+wv.at,st:st.wave,d:'',h:H.wave,m:mtrJ(wv.ft,0.5,'wave_max',null,' ft',1,'wave')});}
     if(R[8]||R[9]){var ev=[];[R[8],R[9]].forEach(function(a){if(a)a.features.forEach(function(f){if(ev.indexOf(f.properties.event)<0)ev.push(f.properties.event);});});
       st.alert=ev.some(function(a){return /Gale Warning|Storm Warning|Hurricane/.test(a);})?'stop':(ev.length?'warn':'go');
       tiles.push({k:'alert',l:'Marine alerts',kk:'NWS · live',v:ev[0]||'None',s:ev.slice(1).join(' + ')||'Admiralty Inlet',st:st.alert,d:'',h:H.alert});}
@@ -500,12 +556,12 @@ function liveToday(){
     if(pr.length){var pv=+pr[pr.length-1].v,p3=+pr[0].v,drop=pv-p3,lvl=pv<1000?'Stormy':(pv<1009?'Unsettled':(pv<1020?'Normal':'Settled'));
       st.press=pv<1000?'stop':((pv<1009||drop<=-3)?'warn':'go');var lift=(1013-pv)*0.39,trend=drop<=-1?'falling':(drop>=1?'rising':'steady');
       var eff=lift>=1?'adds ~'+f0(lift)+' in to tide':(lift<=-1?'lowers tide ~'+f0(-lift)+' in':'no tide effect');
-      tiles.push({k:'press',l:'Air pressure',kk:'Gauge · live',v:f0(pv)+' mb',s:lvl+' · '+eff+(trend==='steady'?'':' · '+trend),st:st.press,d:'',h:H.press});}
+      tiles.push({k:'press',l:'Air pressure',kk:'Gauge · live',v:f0(pv)+' mb',s:lvl+' · '+eff+(trend==='steady'?'':' · '+trend),st:st.press,d:'',h:H.press,m:mtrJ(pv,1013,'p_max','p_min',' mb',0,'p')});}
     if(rainT)tiles.push(rainT);
     function dev(x){return (x>=0?'▲ ':'▼ ')+Math.abs(x).toFixed(1)+'° '+(x>=0?'above':'below')+' normal';}
     var wt=R[3].data&&R[3].data[0]&&+R[3].data[0].v,at=R[4].data&&R[4].data[0]&&+R[4].data[0].v;
-    if(wt&&J.normw[key]){var dw=wt-J.normw[key];st.water=Math.abs(dw)<1.5?'go':(Math.abs(dw)<3?'warn':'stop');tiles.push({k:'water',l:'Water',kk:'Gauge · live',v:wt.toFixed(1)+'°F',s:'Normal today '+J.normw[key].toFixed(1)+'°',st:st.water,d:dev(dw),h:H.water});}
-    if(at&&J.norma[key]){var da=at-J.norma[key];st.air=Math.abs(da)<5?'go':(Math.abs(da)<10?'warn':'stop');tiles.push({k:'air',l:'Air',kk:'Gauge · live',v:f0(at)+'°F',s:'Normal today '+J.norma[key].toFixed(1)+'°',st:st.air,d:dev(da),h:H.air});}
+    if(wt&&J.normw[key]){var dw=wt-J.normw[key];st.water=Math.abs(dw)<1.5?'go':(Math.abs(dw)<3?'warn':'stop');tiles.push({k:'water',l:'Water',kk:'Gauge · live',v:wt.toFixed(1)+'°F',s:'Normal today '+J.normw[key].toFixed(1)+'°',st:st.water,d:dev(dw),h:H.water,m:mtrJ(wt,J.normw[key],'wt_max','wt_min','°',1,'wt')});}
+    if(at&&J.norma[key]){var da=at-J.norma[key];st.air=Math.abs(da)<5?'go':(Math.abs(da)<10?'warn':'stop');tiles.push({k:'air',l:'Air',kk:'Gauge · live',v:f0(at)+'°F',s:'Normal today '+J.norma[key].toFixed(1)+'°',st:st.air,d:dev(da),h:H.air,m:mtrJ(at,J.norma[key],'at_max','at_min','°',0,'at')});}
     var ORD={go:0,warn:1,stop:2},WORDS={gust:'gusty',wave:'choppy',resid:'high water',alert:'marine alert up',rain:'wet',press:'pressure falling',
       water:(wt&&J.normw[key]&&wt<J.normw[key])?'cold water':'warm water',air:(at&&J.norma[key]&&at<J.norma[key])?'cold air':'warm air'};
     var fl=Object.keys(st).filter(function(n){return st[n]==='warn'||st[n]==='stop';}).sort(function(a,b){return ORD[st[b]]-ORD[st[a]];});
