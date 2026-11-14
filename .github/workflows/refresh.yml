@@ -1,8 +1,9 @@
 name: Daily refresh
 on:
   schedule:
-    - cron: "57 13 * * *"   # 5:57 am Pacific standard time (6:57 am during daylight time)
-    - cron: "57 21 * * *"   # 1:57 pm Pacific standard time (2:57 pm during daylight time)
+    - cron: "17 13 * * *"   # 5:17 am Pacific (backup run)
+    - cron: "57 13 * * *"   # 5:57 am Pacific
+    - cron: "57 21 * * *"   # 1:57 pm Pacific
   push:
     branches: [main]
   workflow_dispatch: {}
@@ -25,10 +26,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Build the board with fresh data
-        if: github.event_name != 'push'
         run: python3 board.py
       - name: Save the refreshed page to the repo
-        if: github.event_name != 'push'
         run: |
           git config user.name "plunge-board"
           git config user.email "actions@users.noreply.github.com"
