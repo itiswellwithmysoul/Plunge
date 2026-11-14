@@ -167,8 +167,8 @@ for k in sorted(days):
         st["press"] = "stop" if pv < 1000 else ("warn" if (pv < 1009 or drop <= -3) else "go")
         trend = "falling" if drop <= -1 else ("rising" if drop >= 1 else "steady")
         lift = (1013 - pv) * 0.39
-        effect = f"adds ~{lift:.0f} in to the tide" if lift >= 1 else (f"lowers the tide ~{-lift:.0f} in" if lift <= -1 else "no effect on the tide")
-        tiles.append(tile("press", "Air pressure", "Gauge" + ("" if is_today else " · day low"), f"{lvl} · {pv:.0f} mb", f"{effect.capitalize()} · {trend}", st["press"]))
+        effect = f"adds ~{lift:.0f} in to tide" if lift >= 1 else (f"lowers tide ~{-lift:.0f} in" if lift <= -1 else "no tide effect")
+        tiles.append(tile("press", "Air pressure", "Gauge" + ("" if is_today else " · day low"), f"{pv:.0f} mb", f"{lvl} · {effect}" + ("" if trend == "steady" else f" · {trend}"), st["press"]))
     if is_today:
         r12 = sum(q for t, q in qpf if now <= t <= now + dt.timedelta(hours=12) and q is not None)
         st["rain"] = band(r12, 0.5, 1.0)
@@ -253,11 +253,11 @@ svg{display:block;width:100%;height:auto;overflow:visible}svg text{font-family:v
 .sub{display:flex;justify-content:space-between;align-items:baseline;gap:6px;font:600 8.5px/1.3 var(--f-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);border-top:1px solid var(--line);padding-top:7px}
 .sub b{color:var(--ink);font-size:11px;letter-spacing:0;text-transform:none;font-weight:600;text-align:right}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-a.t{display:grid;text-decoration:none;color:inherit;background:var(--bg);border:1px solid var(--line);border-left:3px solid var(--s);padding:5px 8px 6px;min-width:0}
+a.t{display:grid;text-decoration:none;color:inherit;background:#fff;border:1px solid var(--line);border-left:3px solid var(--s);padding:5px 8px 6px;min-width:0}
 a.t.go{--s:var(--up)}a.t.warn{--s:var(--warn)}a.t.stop{--s:var(--down)}a.t.info,a.t.none{--s:var(--line)}
 .tk{display:flex;justify-content:space-between;gap:4px;font-weight:600;font-size:11px;white-space:nowrap}
 .tk em{font:600 8px/1.6 var(--f-sans);font-style:normal;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);overflow:hidden;text-overflow:ellipsis}
-a.t b{font:400 21px/1.1 var(--f-serif);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+a.t b{font:800 28px/1.05 var(--f-sans);letter-spacing:-.04em;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:2px 0 1px}a.t b small{font:600 12.5px var(--f-sans);letter-spacing:0;color:var(--muted);margin-left:3px}a.t b.word{font-size:20px;letter-spacing:-.02em;line-height:1.3}
 a.t.stop b{color:var(--down)}a.t.warn b{color:var(--warn)}
 .ts{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .empty{font-size:12px;color:var(--muted);padding:6px 0}
@@ -303,7 +303,7 @@ a.t.stop b{color:var(--down)}a.t.warn b{color:var(--warn)}
  .kick{font-size:10.5px}
  .big{font-size:60px}.nowtx{font-size:14px}
  .ro{font-size:12.5px}.sub b{font-size:13px}
- .grid{gap:8px}a.t{padding:8px 11px 9px}a.t b{font-size:25px}.tk{font-size:13px}.ts{font-size:11.5px}
+ .grid{gap:8px}a.t{padding:9px 12px 10px}a.t b{font-size:34px}a.t b small{font-size:14px}a.t b.word{font-size:23px}.tk{font-size:13px}.ts{font-size:11.5px}
  .acols{grid-template-columns:repeat(5,minmax(0,1fr));gap:18px}
  .about h2{font-size:24px}.acols p{font-size:13px}
  .foot{font-size:11px}
@@ -398,7 +398,8 @@ function render(k){
   mk('circle',{cx:X(pk),cy:20,r:4.5,fill:'#FFFFFF',stroke:'#1A8C7C','stroke-width':2},rec);
   /* tiles */
   var g=document.getElementById('grid');
-  g.innerHTML=SS.tiles.length?SS.tiles.map(function(t){return '<a class="t '+t.st+'" href="'+t.h+'" target="_blank" rel="noopener"><span class="tk">'+esc(t.l)+'<em>'+esc(t.kk)+'</em></span><b>'+esc(t.v)+'</b><span class="ts">'+esc(t.s)+'</span></a>';}).join(''):'<div class="empty">Conditions are stored for past days and today. For days ahead, the chart shows predicted tides only.</div>';
+  function val(v){var m=String(v).match(/^([+\\-−]?[\\d.,]+)\\s*(.*)$/);return m?'<b>'+esc(m[1])+(m[2]?'<small>'+esc(m[2])+'</small>':'')+'</b>':'<b class="word">'+esc(v)+'</b>';}
+  g.innerHTML=SS.tiles.length?SS.tiles.map(function(t){return '<a class="t '+t.st+'" href="'+t.h+'" target="_blank" rel="noopener"><span class="tk">'+esc(t.l)+'<em>'+esc(t.kk)+'</em></span>'+val(t.v)+'<span class="ts">'+esc(t.s)+'</span></a>';}).join(''):'<div class="empty">Conditions are stored for past days and today. For days ahead, the chart shows predicted tides only.</div>';
   var gl=document.getElementById('glance')||{},pick=function(k){return SS.tiles.filter(function(t){return t.k===k;})[0];};
   gl.innerHTML=['resid','gust','wave','water'].map(pick).filter(Boolean).map(function(t){return '<div class="'+t.st+'"><b>'+esc(t.l)+'</b><strong>'+esc(t.v)+'</strong>'+esc(t.s)+'</div>';}).join('');
   document.getElementById('foot').textContent='NOAA 9444900 (prelim.) · NWS · NDBC 46088 · updated '+J.built+'. Past days show measured conditions. Colors flag unusual conditions, not official limits.';
