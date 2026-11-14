@@ -97,8 +97,8 @@ NAMES = {"resid": "high water", "gust": "gusts", "wave": "waves", "press": "fall
 HREF = {"resid": "https://tidesandcurrents.noaa.gov/waterlevels.html?id=9444900", "gust": "https://www.ndbc.noaa.gov/station_page.php?station=46088",
         "wave": "https://www.ndbc.noaa.gov/station_page.php?station=46088", "alert": "https://forecast.weather.gov/shmrn.php?mz=PZZ134",
         "press": "https://tidesandcurrents.noaa.gov/met.html?id=9444900", "rain": "https://forecast.weather.gov/MapClick.php?lat=48.135&lon=-122.765",
-        "water": "https://tidesandcurrents.noaa.gov/physocean.html?id=9444900", "wind": "https://tidesandcurrents.noaa.gov/met.html?id=9444900"}
-def tile(k, label, kick, val, sub, s): return {"k": k, "l": label, "kk": kick, "v": val, "s": sub, "st": s, "h": HREF[k]}
+        "water": "https://tidesandcurrents.noaa.gov/physocean.html?id=9444900", "wind": "https://tidesandcurrents.noaa.gov/met.html?id=9444900", "air": "https://tidesandcurrents.noaa.gov/met.html?id=9444900"}
+def tile(k, label, kick, val, sub, s, dev=""): return {"k": k, "l": label, "kk": kick, "v": val, "s": sub, "st": s, "d": dev, "h": HREF[k]}
 def press_drop(series):
     worst = 0.0
     for i, (t, v) in enumerate(series):
@@ -118,6 +118,37 @@ gusts = expand(grid["windGust"]["values"], 1 / 1.609)
 qpf = expand(grid["quantitativePrecipitation"]["values"], 1 / 25.4)
 hr = [(dt.datetime.fromisoformat(p["startTime"]).astimezone(PST), p) for p in hourly]
 hr_now = next((p for t, p in hr if t <= now < t + dt.timedelta(hours=1)), hr[0][1])
+
+# ---------------- temperature normals (last 10 years, +/-7 days around each date) ----------------
+def normals(product):
+    import statistics
+    lo, hi = first - dt.timedelta(days=7), (first.replace(day=28) + dt.timedelta(days=4)).replace(day=1) + dt.timedelta(days=6)
+    daily = {}
+    for back in range(1, 11):
+        a = lo.replace(year=lo.year - back); b = hi.replace(year=hi.year - back)
+        try:
+            rows = get(GAUGE.replace("time_zone=lst", "time_zone=lst&interval=h") + f"&product={product}&begin_date={d8(a)}&end_date={d8(b)}").get("data", [])
+        except Exception:
+            continue
+        for r in rows:
+            if r["v"]:
+                daily.setdefault(r["t"][:10], []).append(float(r["v"]))
+    means = {dt.date.fromisoformat(k): sum(v) / len(v) for k, v in daily.items()}
+    out = {}
+    d = first
+    while d.month == first.month:
+        vals = [m for k, m in means.items() if abs((k.replace(year=2001) - d.replace(year=2001)).days) <= 7]
+        if vals: out[d.isoformat()] = sum(vals) / len(vals)
+        d += dt.timedelta(days=1)
+    for k in range(1, 8):  # days ahead in the next month
+        d2 = today + dt.timedelta(days=k)
+        if d2.isoformat() not in out:
+            vals = [m for kk, m in means.items() if abs((kk.replace(year=2001) - d2.replace(year=2001)).days) <= 7]
+            if vals: out[d2.isoformat()] = sum(vals) / len(vals)
+    return out
+NORM_W = normals("water_temperature"); NORM_A = normals("air_temperature")
+def temp_band(dev, g, r): a = abs(dev); return "go" if a < g else ("warn" if a < r else "stop")
+def dev_txt(dev): return ("▲ " if dev >= 0 else "▼ ") + f"{abs(dev):.1f}° {'above' if dev >= 0 else 'below'} normal"
 
 # ---------------- per-day summaries ----------------
 summ = {}
@@ -177,16 +208,23 @@ for k in sorted(days):
         tiles.append(tile("rain", "Rain", "Measured", "—", "no rain gauge on record nearby", "info"))
     if D["wt"]:
         wt = (latest["water_temperature"] and float(latest["water_temperature"]["v"])) if is_today else sum(v for t, v in D["wt"]) / len(D["wt"])
-        at = D["at"][-1][1] if (is_today and D["at"]) else (sum(v for t, v in D["at"]) / len(D["at"]) if D["at"] else None)
-        tiles.append(tile("water", "Water", "Gauge" + ("" if is_today else " · day avg"), f"{wt:.1f}°F",
-                          ("warmest Nov in 10 yrs" if wt > BENCH["nov_wt_max"] else f"Nov normal {BENCH['nov_wt'][0]}–{BENCH['nov_wt'][1]}°") + (f" · air {at:.0f}°" if at else ""), "info"))
-    if D["wind"]:
-        w = D["wind"][-1] if is_today else max(D["wind"], key=lambda x: x[2])
-        tiles.append(tile("wind", "Wind" + (" now" if is_today else ""), "Gauge" + ("" if is_today else " · max"), f"{w[1]:.0f} mph", f"{w[3]} · gust {w[2]:.0f} · harbor, reads low", "info"))
+        nw = NORM_W.get(k)
+        if nw is not None:
+            dv = wt - nw; st["water"] = temp_band(dv, 1.5, 3.0)
+            tiles.append(tile("water", "Water", "Gauge" + ("" if is_today else " · day avg"), f"{wt:.1f}°F", f"Normal {'today' if is_today else 'that day'} {nw:.1f}°", st["water"], dev_txt(dv)))
+        else:
+            tiles.append(tile("water", "Water", "Gauge", f"{wt:.1f}°F", "", "info"))
+    if D["at"]:
+        at = D["at"][-1][1] if is_today else sum(v for t, v in D["at"]) / len(D["at"])
+        na = NORM_A.get(k)
+        if na is not None:
+            dv = at - na; st["air"] = temp_band(dv, 5, 10)
+            tiles.append(tile("air", "Air", "Gauge" + ("" if is_today else " · day avg"), f"{at:.0f}°F", f"Normal {'today' if is_today else 'that day'} {na:.1f}°", st["air"], dev_txt(dv)))
+    WARMCOLD = lambda n: ("warm " if "▲" in next(t["d"] for t in tiles if t["k"] == n) else "cold ") + ("water" if n == "water" else "air")
     WORDS = {"gust": "gusty", "wave": "choppy", "resid": "high water", "alert": "marine alert up", "rain": "wet", "press": "pressure falling"}
     flagged = sorted([n for n, x in st.items() if x in ("warn", "stop")], key=lambda n: -ORDER[st[n]])
     if flagged:
-        phrase = ", ".join(WORDS[n] for n in flagged[:2]) + "."
+        phrase = ", ".join(WARMCOLD(n) if n in ("water", "air") else WORDS[n] for n in flagged[:2]) + "."
         head = phrase[0].upper() + phrase[1:]
     else:
         head = "Calm and quiet."
@@ -260,7 +298,7 @@ a.t.go{--s:var(--up)}a.t.warn{--s:var(--warn)}a.t.stop{--s:var(--down)}a.t.info,
 .tk{display:flex;justify-content:space-between;gap:4px;font-weight:600;font-size:11px;white-space:nowrap}
 .tk em{font:600 8px/1.6 var(--f-sans);font-style:normal;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);overflow:hidden;text-overflow:ellipsis}
 a.t b{font:800 28px/1.05 var(--f-sans);letter-spacing:-.04em;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:2px 0 1px}a.t b small{font:600 12.5px var(--f-sans);letter-spacing:0;color:var(--muted);margin-left:3px}a.t b.word{font-size:20px;letter-spacing:-.02em;line-height:1.3}
-a.t.stop b{color:var(--down)}a.t.warn b{color:var(--warn)}
+a.t.stop b{color:var(--down)}a.t.warn b{color:var(--warn)}.dev{font:700 11.5px/1.3 var(--f-sans);color:var(--muted)}a.t.stop .dev{color:var(--down)}a.t.warn .dev{color:var(--warn)}a.t.go .dev{color:var(--up)}
 .ts{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .empty{font-size:12px;color:var(--muted);padding:6px 0}
 .stale{border:1px solid var(--warn);color:var(--warn);font-size:11.5px;padding:7px 9px}
@@ -341,7 +379,7 @@ a.t.stop b{color:var(--down)}a.t.warn b{color:var(--warn)}
     <div><b>Air pressure</b><p>Normal is about 1013 mb. Lower means stormier weather, and it lifts the sea: every millibar below normal adds about 0.4 inch to the tide. Under 1000 is red, 1000–1009 amber. Falling pressure means weather is moving in.</p></div>
     <div><b>Gusts and waves</b><p>Gusts over 20 mph are amber and over 25 red. Waves come from the New Dungeness buoy: 1–3 ft amber, over 3 ft red. At Fort Worden, wind from the north or west drives waves onto the beach; wind from the south or east flattens it but pushes floaters out.</p></div>
     <div><b>Your call</b><p>The colors flag what's unusual, not a rule: green is typical, amber is worth noticing, red is well outside normal. Whether to go in is up to you. Look at the beach too: logs moving at the waterline, waves at the top of the beach, a fresh bluff slide, lightning or failing light.</p></div>
-    <div><b>Look back</b><p>Use the date box to see any day this month. Past days show what was measured; days ahead show predicted tides only. The board rebuilds every morning before 6 am.</p></div>
+    <div><b>Temperature</b><p>Compared with normal for the date over the last 10 years. Water barely varies, so 1.5° off is amber and 3° red; air swings more, so 5° and 10°. Warmer or colder both count. Use the date box to look back over this month.</p></div>
   </div>
 </section>
 <footer class="foot" id="foot"></footer>
@@ -401,7 +439,7 @@ function render(k){
   /* tiles */
   var g=document.getElementById('grid');
   function val(v){var m=String(v).match(/^([+\\-−]?[\\d.,]+)\\s*(.*)$/);return m?'<b>'+esc(m[1])+(m[2]?'<small>'+esc(m[2])+'</small>':'')+'</b>':'<b class="word">'+esc(v)+'</b>';}
-  g.innerHTML=SS.tiles.length?SS.tiles.map(function(t){return '<a class="t '+t.st+'" href="'+t.h+'" target="_blank" rel="noopener"><span class="tk">'+esc(t.l)+'<em>'+esc(t.kk)+'</em></span>'+val(t.v)+'<span class="ts">'+esc(t.s)+'</span></a>';}).join(''):'<div class="empty">Conditions are stored for past days and today. For days ahead, the chart shows predicted tides only.</div>';
+  g.innerHTML=SS.tiles.length?SS.tiles.map(function(t){return '<a class="t '+t.st+'" href="'+t.h+'" target="_blank" rel="noopener"><span class="tk">'+esc(t.l)+'<em>'+esc(t.kk)+'</em></span>'+val(t.v)+(t.d?'<span class="dev">'+esc(t.d)+'</span>':'')+'<span class="ts">'+esc(t.s)+'</span></a>';}).join(''):'<div class="empty">Conditions are stored for past days and today. For days ahead, the chart shows predicted tides only.</div>';
   var gl=document.getElementById('glance')||{},pick=function(k){return SS.tiles.filter(function(t){return t.k===k;})[0];};
   gl.innerHTML=['resid','gust','wave','water'].map(pick).filter(Boolean).map(function(t){return '<div class="'+t.st+'"><b>'+esc(t.l)+'</b><strong>'+esc(t.v)+'</strong>'+esc(t.s)+'</div>';}).join('');
   document.getElementById('foot').textContent='NOAA 9444900 (prelim.) · NWS · NDBC 46088 · updated '+J.built+'. Past days show measured conditions. Colors flag unusual conditions, not official limits.';
