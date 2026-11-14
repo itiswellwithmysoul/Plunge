@@ -379,7 +379,7 @@ a.t.stop b{color:var(--down)}a.t.warn b{color:var(--warn)}.dev{font:700 11.5px/1
     <div><b>Air pressure</b><p>Normal is about 1013 mb. Lower means stormier weather, and it lifts the sea: every millibar below normal adds about 0.4 inch to the tide. Under 1000 is red, 1000–1009 amber. Falling pressure means weather is moving in.</p></div>
     <div><b>Gusts and waves</b><p>Gusts over 20 mph are amber and over 25 red. Waves come from the New Dungeness buoy: 1–3 ft amber, over 3 ft red. At Fort Worden, wind from the north or west drives waves onto the beach; wind from the south or east flattens it but pushes floaters out.</p></div>
     <div><b>Your call</b><p>The colors flag what's unusual, not a rule: green is typical, amber is worth noticing, red is well outside normal. Whether to go in is up to you. Look at the beach too: logs moving at the waterline, waves at the top of the beach, a fresh bluff slide, lightning or failing light.</p></div>
-    <div><b>Temperature</b><p>Compared with normal for the date over the last 10 years. Water barely varies, so 1.5° off is amber and 3° red; air swings more, so 5° and 10°. Warmer or colder both count. Use the date box to look back over this month.</p></div>
+    <div><b>Temperature</b><p>Compared with normal for the date over the last 10 years. Water barely varies, so 1.5° off is amber and 3° red; air swings more, so 5° and 10°. Warmer or colder both count. Use the date box to look back over this month. The board refreshes before 6 am and again before 2 pm.</p></div>
   </div>
 </section>
 <footer class="foot" id="foot"></footer>

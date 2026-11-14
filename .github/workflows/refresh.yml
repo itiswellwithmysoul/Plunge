@@ -2,6 +2,7 @@ name: Daily refresh
 on:
   schedule:
     - cron: "57 13 * * *"   # 5:57 am Pacific standard time (6:57 am during daylight time)
+    - cron: "57 21 * * *"   # 1:57 pm Pacific standard time (2:57 pm during daylight time)
   push:
     branches: [main]
   workflow_dispatch: {}
