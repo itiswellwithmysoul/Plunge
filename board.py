@@ -93,21 +93,11 @@ def clock(m):
 def ft(x): return ("−" if x < 0 else "") + f"{abs(x):.1f}"
 def band(v, g, r): return "go" if v < g else ("warn" if v < r else "stop")
 ORDER = {"go": 0, "warn": 1, "stop": 2, "info": -1, "none": -1}
-NAMES = {"resid": "high water", "gust": "gusts", "chop": "chop", "wave": "swell", "press": "falling pressure", "rain": "heavy rain", "alert": "a gale warning"}
-HREF = {"resid": "https://tidesandcurrents.noaa.gov/waterlevels.html?id=9444900", "gust": "https://tidesandcurrents.noaa.gov/met.html?id=9444900", "chop": "https://tidesandcurrents.noaa.gov/met.html?id=9444900",
+NAMES = {"resid": "high water", "gust": "gusts", "wave": "swell", "press": "falling pressure", "rain": "heavy rain", "alert": "a gale warning"}
+HREF = {"resid": "https://tidesandcurrents.noaa.gov/waterlevels.html?id=9444900", "gust": "https://tidesandcurrents.noaa.gov/met.html?id=9444900",
         "wave": "https://www.ndbc.noaa.gov/station_page.php?station=46088", "alert": "https://forecast.weather.gov/shmrn.php?mz=PZZ134",
         "press": "https://tidesandcurrents.noaa.gov/met.html?id=9444900", "rain": "https://forecast.weather.gov/MapClick.php?lat=48.135&lon=-122.765",
         "water": "https://tidesandcurrents.noaa.gov/physocean.html?id=9444900", "wind": "https://tidesandcurrents.noaa.gov/met.html?id=9444900", "air": "https://tidesandcurrents.noaa.gov/met.html?id=9444900"}
-# Local chop at Fort Worden, estimated from Port Townsend gauge wind. Wind from the north or west
-# blows onto the beach; south and east winds are offshore and flatten it.
-EXPO = {"N": 1, "NNW": 1, "NW": 1, "WNW": 1, "W": 1, "NNE": .6, "NE": .6, "WSW": .6, "ENE": .3, "SW": .3, "E": 0, "ESE": 0, "SE": 0, "SSE": 0, "S": 0, "SSW": 0}
-def chop(mph, dr):
-    x = EXPO.get(dr, .5); e = mph * x
-    if x == 0 and mph >= 15:  # flat water, but a strong offshore wind pushes floaters out
-        return e, "Offshore", ("stop" if mph >= 25 else "warn"), f"{dr} {mph:.0f} mph · pushes you out"
-    word, st_ = ("Rough", "stop") if e >= 15 else (("Choppy", "warn") if e >= 8 else ("Calm", "go"))
-    side = "onshore" if x >= .6 else ("offshore, flat" if x == 0 else "side-shore")
-    return e, word, st_, f"{dr} {mph:.0f} mph · {side}"
 def tile(k, label, kick, val, sub, s, dev=""): return {"k": k, "l": label, "kk": kick, "v": val, "s": sub, "st": s, "d": dev, "h": HREF[k]}
 def press_drop(series):
     worst = 0.0
@@ -236,15 +226,6 @@ for k in sorted(days):
         st["gust"] = band(g, 20, 26) if g is not None else "none"
         tiles.append(tile("gust", "Gusts", "Gauge · daylight max", f"{g:.0f} mph" if g is not None else "—", "measured at Port Townsend", st["gust"]))
         tiles[-1]["m"] = meter(g, 15, "gust_max", None, " mph", 0, "gust")
-    if is_today:
-        lw = latest.get("wind") or {}
-        cw = chop(float(lw["s"]) * 1.151, lw.get("dr", "")) if lw.get("s") else None
-    else:
-        dw = [chop(w[1], w[3]) for w in D["wind"] if rise <= w[0] <= sset]
-        cw = max(dw, key=lambda c: c[0]) if dw else None
-    if cw:
-        st["chop"] = cw[2]; chop_word = "strong offshore wind" if cw[1] == "Offshore" else "choppy"
-        tiles.append(tile("chop", "Local chop", "PT wind · est." + ("" if is_today else " · day max"), cw[1], cw[3], cw[2]))
     waves = [b[1] for b in (day_b if not is_today else D["buoy"][-6:]) if b[1] is not None]
     wv = (waves[-1] if is_today else max(waves)) if waves else None
     st["wave"] = band(wv, 1, 3) if wv is not None else "none"
@@ -288,7 +269,7 @@ for k in sorted(days):
             tiles.append(tile("air", "Air", "Gauge" + ("" if is_today else " · day avg"), f"{at:.0f}°F", f"Normal {'today' if is_today else 'that day'} {na:.1f}°", st["air"], dev_txt(dv)))
             tiles[-1]["m"] = meter(at if is_today else (max(v for t, v in D["at"]) if dv >= 0 else min(v for t, v in D["at"])), na, "at_max", "at_min", "°", 0, "at")
     WARMCOLD = lambda n: ("warm " if "▲" in next(t["d"] for t in tiles if t["k"] == n) else "cold ") + ("water" if n == "water" else "air")
-    WORDS = {"gust": "gusty", "chop": chop_word if cw else "choppy", "wave": "swell up", "resid": "high water", "alert": "marine alert up", "rain": "wet", "press": "pressure falling"}
+    WORDS = {"gust": "gusty", "wave": "swell up", "resid": "high water", "alert": "marine alert up", "rain": "wet", "press": "pressure falling"}
     flagged = sorted([n for n, x in st.items() if x in ("warn", "stop")], key=lambda n: -ORDER[st[n]])
     if flagged:
         phrase = ", ".join(WARMCOLD(n) if n in ("water", "air") else WORDS[n] for n in flagged[:2]) + "."
@@ -447,7 +428,7 @@ a.t.stop b{color:var(--down)}a.t.warn b{color:var(--warn)}.dev{font:700 11.5px/1
   <div class="acols">
     <div><b>Above prediction</b><p>Tide tables only know the moon and sun. Storms, low pressure and this winter's El Niño push the water higher. Over 9 inches is amber and over 1.5 ft red: the beach gets narrower and logs can float.</p></div>
     <div><b>Air pressure</b><p>Normal is about 1013 mb. Lower means stormier weather, and it lifts the sea: every millibar below normal adds about 0.4 inch to the tide. Under 1000 is red, 1000–1009 amber. Falling pressure means weather is moving in.</p></div>
-    <div><b>Gusts, chop and swell</b><p>Gusts over 20 mph are amber and over 25 red. Local chop is an estimate from the Port Townsend gauge's wind: wind from the north or west drives waves onto the beach (amber from 8 mph, red from 15), while wind from the south or east flattens it but pushes floaters out, so a strong offshore wind (15 mph and up) shows as amber or red. Strait swell comes from the New Dungeness buoy, about 25 miles west: 1–3 ft amber, over 3 ft red. It's background, not the beach itself.</p></div>
+    <div><b>Gusts and swell</b><p>Gusts over 20 mph are amber and over 25 red. Strait swell comes from the New Dungeness buoy, about 25 miles west, the closest wave reading to Fort Worden. It's background, not the beach itself: 1–3 ft amber, over 3 ft red. Local chop can differ, so look at the water. At Fort Worden, wind from the north or west drives waves onto the beach; wind from the south or east flattens it but pushes floaters out.</p></div>
     <div><b>Your call</b><p>The colors flag what's unusual, not a rule: green is typical, amber is worth noticing, red is well outside normal. Whether to go in is up to you. Look at the beach too: logs moving at the waterline, waves at the top of the beach, a fresh bluff slide, lightning or failing light.</p></div>
     <div><b>Temperature</b><p>Compared with normal for the date over the last 10 years. Water barely varies, so 1.5° off is amber and 3° red; air swings more, so 5° and 10°. Warmer or colder both count. Each tile's bar shows where the reading sits between normal and this month's record at the station, and names the record and its year. Use the date box to look back over this month. The board refreshes before 6 am and again before 2 pm.</p></div>
   </div>
@@ -512,7 +493,7 @@ function render(k){
   function val(v){var m=String(v).match(/^([+\\-−]?[\\d.,]+)\\s*(.*)$/);return m?'<b>'+esc(m[1])+(m[2]?'<small>'+esc(m[2])+'</small>':'')+'</b>':'<b class="word">'+esc(v)+'</b>';}
   g.innerHTML=SS.tiles.length?SS.tiles.map(function(t){return '<a class="t '+t.st+'" href="'+t.h+'" target="_blank" rel="noopener"><span class="tk">'+esc(t.l)+'<em>'+esc(t.kk)+'</em></span>'+val(t.v)+(t.d?'<span class="dev">'+esc(t.d)+'</span>':'')+'<span class="ts">'+esc(t.s)+'</span>'+mtrHtml(t.m)+'</a>';}).join(''):'<div class="empty">Conditions are stored for past days and today. For days ahead, the chart shows predicted tides only.</div>';
   var gl=document.getElementById('glance')||{},pick=function(k){return SS.tiles.filter(function(t){return t.k===k;})[0];};
-  gl.innerHTML=['resid','gust','chop','water'].map(pick).filter(Boolean).map(function(t){return '<div class="'+t.st+'"><b>'+esc(t.l)+'</b><strong>'+esc(t.v)+'</strong>'+esc(t.s)+'</div>';}).join('');
+  gl.innerHTML=['resid','gust','wave','water'].map(pick).filter(Boolean).map(function(t){return '<div class="'+t.st+'"><b>'+esc(t.l)+'</b><strong>'+esc(t.v)+'</strong>'+esc(t.s)+'</div>';}).join('');
   document.getElementById('foot').textContent='NOAA 9444900 (prelim.) · NWS · NDBC 46088 · tide, weather and alerts load live; waves and history as of '+J.built+'. Past days show measured conditions. Colors flag unusual conditions, not official limits. Records: water level since '+J.since.wl+', water temp since '+J.since.wt+', air and pressure since '+J.since.p+', buoy since '+J.since.wave+'.';
 }
 function show(m){m=Math.max(0,Math.min(DAY,m));var p=interp(DD.pred,m);if(!p)return;cur.setAttribute('opacity',1);cl.setAttribute('x1',x(m));cl.setAttribute('x2',x(m));cc.setAttribute('cx',x(m));cc.setAttribute('cy',y(p[0]));
@@ -543,7 +524,7 @@ function liveToday(){
     gauge('product=water_temperature&date=latest'),gauge('product=air_temperature&date=latest'),
     gauge('product=predictions&datum=MLLW&interval=hilo&begin_date='+P.year+P.month+P.day+'&range=48'),
     nws(J.nws.hourly).catch(function(){return null;}),nws(J.nws.grid).catch(function(){return null;}),
-    nws('https://api.weather.gov/alerts/active?zone=PZZ134').catch(function(){return null;}),nws('https://api.weather.gov/alerts/active?point=48.135,-122.765').catch(function(){return null;}),gauge('product=wind&date=latest').catch(function(){return null;})];
+    nws('https://api.weather.gov/alerts/active?zone=PZZ134').catch(function(){return null;}),nws('https://api.weather.gov/alerts/active?point=48.135,-122.765').catch(function(){return null;})];
   Promise.all(reqs).then(function(R){
     var pred=(R[0].predictions||[]).map(function(p){return [tmin(p.t),+(+p.v).toFixed(2)];}),
         obs=(R[1].data||[]).filter(function(p){return p.v!=='';}).map(function(p){return [tmin(p.t),+(+p.v).toFixed(2)];});
@@ -566,11 +547,6 @@ function liveToday(){
       tiles.push({k:'gust',l:'Gusts',kk:'NWS · next 6 h',v:f0(g6)+' mph',s:hp?(hp.windDirection+' '+hp.windSpeed+' now'):'',st:st.gust,d:'',h:H.gust,m:mtrJ(g6,15,'gust_max',null,' mph',0,'gust')});
       var q=expand(R[7].properties.quantitativePrecipitation.values,1/25.4).filter(function(g){return g[0]>=nowT-36e5&&g[0]<=nowT+12*36e5&&g[1]!=null;});
       var r12=q.reduce(function(a,b){return a+b[1];},0);st.rain=bandJ(r12,0.5,1.0);var rainT={k:'rain',l:'Rain',kk:'NWS · next 12 h',v:r12.toFixed(2)+' in',s:'runoff raises bacteria',st:st.rain,d:'',h:H.rain};}
-    var EX={N:1,NNW:1,NW:1,WNW:1,W:1,NNE:.6,NE:.6,WSW:.6,ENE:.3,SW:.3,E:0,ESE:0,SE:0,SSE:0,S:0,SSW:0},lw=R[10]&&R[10].data&&R[10].data[0];
-    var chopW='choppy';if(lw&&lw.s!==''){var wm=+lw.s*1.151,xf=lw.dr in EX?EX[lw.dr]:.5,ce=wm*xf,cv,cs;
-      if(xf===0&&wm>=15){st.chop=wm>=25?'stop':'warn';cv='Offshore';cs='pushes you out';chopW='strong offshore wind';}
-      else{st.chop=ce>=15?'stop':(ce>=8?'warn':'go');cv=ce>=15?'Rough':(ce>=8?'Choppy':'Calm');cs=xf>=.6?'onshore':(xf===0?'offshore, flat':'side-shore');}
-      tiles.push({k:'chop',l:'Local chop',kk:'PT wind · est.',v:cv,s:lw.dr+' '+f0(wm)+' mph · '+cs,st:st.chop,d:'',h:H.chop});}
     var wv=J.buoy;if(wv){st.wave=bandJ(wv.ft,1,3);tiles.push({k:'wave',l:'Strait swell',kk:'Buoy · 25 mi W',v:wv.ft.toFixed(1)+' ft',s:'New Dungeness · as of '+wv.at,st:st.wave,d:'',h:H.wave,m:mtrJ(wv.ft,0.5,'wave_max',null,' ft',1,'wave')});}
     if(R[8]||R[9]){var ev=[];[R[8],R[9]].forEach(function(a){if(a)a.features.forEach(function(f){if(ev.indexOf(f.properties.event)<0)ev.push(f.properties.event);});});
       st.alert=ev.some(function(a){return /Gale Warning|Storm Warning|Hurricane/.test(a);})?'stop':(ev.length?'warn':'go');
@@ -585,7 +561,7 @@ function liveToday(){
     var wt=R[3].data&&R[3].data[0]&&+R[3].data[0].v,at=R[4].data&&R[4].data[0]&&+R[4].data[0].v;
     if(wt&&J.normw[key]){var dw=wt-J.normw[key];st.water=Math.abs(dw)<1.5?'go':(Math.abs(dw)<3?'warn':'stop');tiles.push({k:'water',l:'Water',kk:'Gauge · live',v:wt.toFixed(1)+'°F',s:'Normal today '+J.normw[key].toFixed(1)+'°',st:st.water,d:dev(dw),h:H.water,m:mtrJ(wt,J.normw[key],'wt_max','wt_min','°',1,'wt')});}
     if(at&&J.norma[key]){var da=at-J.norma[key];st.air=Math.abs(da)<5?'go':(Math.abs(da)<10?'warn':'stop');tiles.push({k:'air',l:'Air',kk:'Gauge · live',v:f0(at)+'°F',s:'Normal today '+J.norma[key].toFixed(1)+'°',st:st.air,d:dev(da),h:H.air,m:mtrJ(at,J.norma[key],'at_max','at_min','°',0,'at')});}
-    var ORD={go:0,warn:1,stop:2},WORDS={gust:'gusty',chop:chopW,wave:'swell up',resid:'high water',alert:'marine alert up',rain:'wet',press:'pressure falling',
+    var ORD={go:0,warn:1,stop:2},WORDS={gust:'gusty',wave:'swell up',resid:'high water',alert:'marine alert up',rain:'wet',press:'pressure falling',
       water:(wt&&J.normw[key]&&wt<J.normw[key])?'cold water':'warm water',air:(at&&J.norma[key]&&at<J.norma[key])?'cold air':'warm air'};
     var fl=Object.keys(st).filter(function(n){return st[n]==='warn'||st[n]==='stop';}).sort(function(a,b){return ORD[st[b]]-ORD[st[a]];});
     var head=fl.length?fl.slice(0,2).map(function(n){return WORDS[n];}).join(', ')+'.':'Calm and quiet.';head=head.charAt(0).toUpperCase()+head.slice(1);
