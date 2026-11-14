@@ -244,7 +244,9 @@ for k in sorted(days):
 
 month_peak = max((s["peak"][1], k) for k, s in summ.items() if "peak" in s)
 BUILD = now.strftime("%Y%m%d%H%M%S")
-J = {"build": BUILD, "days": days, "summ": summ, "today": k_today, "first": key(dt.datetime.combine(first, dt.time(), PST)), "last": key(dt.datetime.combine(ahead, dt.time(), PST)),
+lb = next(((k2, b) for k2 in sorted(days, reverse=True) for b in reversed(days[k2]["buoy"]) if b[1] is not None), None)
+J_BUOY = {"ft": lb[1][1], "at": clock(lb[1][0]) + ("" if lb[0] == k_today else " " + dt.date.fromisoformat(lb[0]).strftime("%b %-d"))} if lb else None
+J = {"build": BUILD, "normw": NORM_W, "norma": NORM_A, "href": HREF, "buoy": J_BUOY, "nws": {"hourly": pt["forecastHourly"], "grid": pt["forecastGridData"]}, "days": days, "summ": summ, "today": k_today, "first": key(dt.datetime.combine(first, dt.time(), PST)), "last": key(dt.datetime.combine(ahead, dt.time(), PST)),
      "bench": BENCH, "built": now.strftime("%b %-d, %-I:%M %p").replace("AM", "am").replace("PM", "pm"), "mpeak": month_peak}
 
 # ---------------- page ----------------
@@ -442,7 +444,7 @@ function render(k){
   g.innerHTML=SS.tiles.length?SS.tiles.map(function(t){return '<a class="t '+t.st+'" href="'+t.h+'" target="_blank" rel="noopener"><span class="tk">'+esc(t.l)+'<em>'+esc(t.kk)+'</em></span>'+val(t.v)+(t.d?'<span class="dev">'+esc(t.d)+'</span>':'')+'<span class="ts">'+esc(t.s)+'</span></a>';}).join(''):'<div class="empty">Conditions are stored for past days and today. For days ahead, the chart shows predicted tides only.</div>';
   var gl=document.getElementById('glance')||{},pick=function(k){return SS.tiles.filter(function(t){return t.k===k;})[0];};
   gl.innerHTML=['resid','gust','wave','water'].map(pick).filter(Boolean).map(function(t){return '<div class="'+t.st+'"><b>'+esc(t.l)+'</b><strong>'+esc(t.v)+'</strong>'+esc(t.s)+'</div>';}).join('');
-  document.getElementById('foot').textContent='NOAA 9444900 (prelim.) · NWS · NDBC 46088 · updated '+J.built+'. Past days show measured conditions. Colors flag unusual conditions, not official limits.';
+  document.getElementById('foot').textContent='NOAA 9444900 (prelim.) · NWS · NDBC 46088 · tide, weather and alerts load live; waves and history as of '+J.built+'. Past days show measured conditions. Colors flag unusual conditions, not official limits.';
 }
 function show(m){m=Math.max(0,Math.min(DAY,m));var p=interp(DD.pred,m);if(!p)return;cur.setAttribute('opacity',1);cl.setAttribute('x1',x(m));cl.setAttribute('x2',x(m));cc.setAttribute('cx',x(m));cc.setAttribute('cy',y(p[0]));
   var o=null;DD.obs.forEach(function(q){if(Math.abs(q[0]-m)<=3)o=q[1];});
@@ -453,8 +455,80 @@ svg.addEventListener('pointerdown',function(e){show(evm(e));});
 svg.addEventListener('pointermove',function(e){if(e.buttons||e.pointerType==='mouse')show(evm(e));});
 svg.addEventListener('touchmove',function(e){show(evm(e));e.preventDefault();},{passive:false});
 inp.addEventListener('change',function(){if(J.summ[inp.value])render(inp.value);else inp.value=DD?SS.date:J.today;});
-var vt=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles'}).format(new Date());if(vt>J.today){var sb=document.getElementById('stale');sb.hidden=false;sb.textContent='Heads up: this board was last refreshed '+J.built+'. Today\u2019s readings aren\u2019t in yet, so tap a tile for live data.';}
 var h=(location.hash||'').replace('#d','');render(J.summ[h]?h:J.today);
+/* ---------- live: pull current NOAA gauge and Weather Service data whenever the page is opened ---------- */
+var LIVE={busy:false,ok:false};
+function ptNow(){var o={};new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).forEach(function(p){o[p.type]=p.value;});return o;}
+function tmin(t){return (+t.slice(11,13))*60+(+t.slice(14,16));}
+function gauge(q){return fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?station=9444900&units=english&time_zone=lst&format=json&application=PTPlungers&'+q,{cache:'no-store'}).then(function(r){return r.json();});}
+function nws(u){return fetch(u,{cache:'no-store',headers:{'Accept':'application/geo+json'}}).then(function(r){if(!r.ok)throw 0;return r.json();});}
+function hrs(d){var m=d.match(/P(?:(\\d+)D)?T?(?:(\\d+)H)?/);return m?((+(m[1]||0))*24+(+(m[2]||0)))||1:1;}
+function expand(vals,conv){var out=[];vals.forEach(function(v){var p=v.validTime.split('/'),s=new Date(p[0]).getTime(),n=hrs(p[1]);for(var i=0;i<n;i++)out.push([s+i*36e5,v.value==null?null:v.value*conv]);});return out;}
+function bandJ(v,g,r){return v<g?'go':(v<r?'warn':'stop');}
+function f0(x){return Math.round(x).toString();}
+function sgn(x){return (x>=0?'+':'−')+Math.abs(x).toFixed(1);}
+function liveToday(){
+  if(LIVE.busy)return;LIVE.busy=true;
+  var P=ptNow(),key=P.year+'-'+P.month+'-'+P.day,nowM=(+P.hour)*60+(+P.minute),nowT=Date.now();
+  var reqs=[gauge('product=predictions&datum=MLLW&date=today'),gauge('product=water_level&datum=MLLW&date=today'),gauge('product=air_pressure&range=4'),
+    gauge('product=water_temperature&date=latest'),gauge('product=air_temperature&date=latest'),
+    gauge('product=predictions&datum=MLLW&interval=hilo&begin_date='+P.year+P.month+P.day+'&range=48'),
+    nws(J.nws.hourly).catch(function(){return null;}),nws(J.nws.grid).catch(function(){return null;}),
+    nws('https://api.weather.gov/alerts/active?zone=PZZ134').catch(function(){return null;}),nws('https://api.weather.gov/alerts/active?point=48.135,-122.765').catch(function(){return null;})];
+  Promise.all(reqs).then(function(R){
+    var pred=(R[0].predictions||[]).map(function(p){return [tmin(p.t),+(+p.v).toFixed(2)];}),
+        obs=(R[1].data||[]).filter(function(p){return p.v!=='';}).map(function(p){return [tmin(p.t),+(+p.v).toFixed(2)];});
+    if(pred.length<10||obs.length<2)throw 'no tide';
+    var pmap={};pred.forEach(function(p){pmap[p[0]]=p[1];});
+    var rs=obs.filter(function(o){return o[0] in pmap;}).map(function(o){return o[1]-pmap[o[0]];});
+    var rec=rs.slice(-30),resid=rec.reduce(function(a,b){return a+b;},0)/rec.length;
+    var last=obs[obs.length-1],peak=obs.reduce(function(a,b){return b[1]>a[1]?b:a;});
+    var st={},tiles=[],H=J.href;
+    st.resid=resid>=1.5?'stop':(resid>=0.75?'warn':'go');
+    tiles.push({k:'resid',l:'Above prediction',kk:'Gauge · live',v:sgn(resid)+' ft',s:sgn(Math.min.apply(null,rs))+' to '+sgn(Math.max.apply(null,rs))+' through the day',st:st.resid,d:'',h:H.resid});
+    var hp=R[6]&&R[6].properties.periods.filter(function(p){return new Date(p.startTime).getTime()<=nowT&&nowT<new Date(p.endTime).getTime();})[0];
+    if(R[7]){var gs=expand(R[7].properties.windGust.values,1/1.609).filter(function(g){return g[0]>=nowT-36e5&&g[0]<=nowT+6*36e5&&g[1]!=null;}).map(function(g){return g[1];});
+      var g6=gs.length?Math.max.apply(null,gs):0;st.gust=bandJ(g6,20,26);
+      tiles.push({k:'gust',l:'Gusts',kk:'NWS · next 6 h',v:f0(g6)+' mph',s:hp?(hp.windDirection+' '+hp.windSpeed+' now'):'',st:st.gust,d:'',h:H.gust});
+      var q=expand(R[7].properties.quantitativePrecipitation.values,1/25.4).filter(function(g){return g[0]>=nowT-36e5&&g[0]<=nowT+12*36e5&&g[1]!=null;});
+      var r12=q.reduce(function(a,b){return a+b[1];},0);st.rain=bandJ(r12,0.5,1.0);var rainT={k:'rain',l:'Rain',kk:'NWS · next 12 h',v:r12.toFixed(2)+' in',s:'runoff raises bacteria',st:st.rain,d:'',h:H.rain};}
+    var wv=J.buoy;if(wv){st.wave=bandJ(wv.ft,1,3);tiles.push({k:'wave',l:'Waves',kk:'Buoy 46088',v:wv.ft.toFixed(1)+' ft',s:'New Dungeness · as of '+wv.at,st:st.wave,d:'',h:H.wave});}
+    if(R[8]||R[9]){var ev=[];[R[8],R[9]].forEach(function(a){if(a)a.features.forEach(function(f){if(ev.indexOf(f.properties.event)<0)ev.push(f.properties.event);});});
+      st.alert=ev.some(function(a){return /Gale Warning|Storm Warning|Hurricane/.test(a);})?'stop':(ev.length?'warn':'go');
+      tiles.push({k:'alert',l:'Marine alerts',kk:'NWS · live',v:ev[0]||'None',s:ev.slice(1).join(' + ')||'Admiralty Inlet',st:st.alert,d:'',h:H.alert});}
+    var pr=(R[2].data||[]).filter(function(p){return p.v!=='';});
+    if(pr.length){var pv=+pr[pr.length-1].v,p3=+pr[0].v,drop=pv-p3,lvl=pv<1000?'Stormy':(pv<1009?'Unsettled':(pv<1020?'Normal':'Settled'));
+      st.press=pv<1000?'stop':((pv<1009||drop<=-3)?'warn':'go');var lift=(1013-pv)*0.39,trend=drop<=-1?'falling':(drop>=1?'rising':'steady');
+      var eff=lift>=1?'adds ~'+f0(lift)+' in to tide':(lift<=-1?'lowers tide ~'+f0(-lift)+' in':'no tide effect');
+      tiles.push({k:'press',l:'Air pressure',kk:'Gauge · live',v:f0(pv)+' mb',s:lvl+' · '+eff+(trend==='steady'?'':' · '+trend),st:st.press,d:'',h:H.press});}
+    if(rainT)tiles.push(rainT);
+    function dev(x){return (x>=0?'▲ ':'▼ ')+Math.abs(x).toFixed(1)+'° '+(x>=0?'above':'below')+' normal';}
+    var wt=R[3].data&&R[3].data[0]&&+R[3].data[0].v,at=R[4].data&&R[4].data[0]&&+R[4].data[0].v;
+    if(wt&&J.normw[key]){var dw=wt-J.normw[key];st.water=Math.abs(dw)<1.5?'go':(Math.abs(dw)<3?'warn':'stop');tiles.push({k:'water',l:'Water',kk:'Gauge · live',v:wt.toFixed(1)+'°F',s:'Normal today '+J.normw[key].toFixed(1)+'°',st:st.water,d:dev(dw),h:H.water});}
+    if(at&&J.norma[key]){var da=at-J.norma[key];st.air=Math.abs(da)<5?'go':(Math.abs(da)<10?'warn':'stop');tiles.push({k:'air',l:'Air',kk:'Gauge · live',v:f0(at)+'°F',s:'Normal today '+J.norma[key].toFixed(1)+'°',st:st.air,d:dev(da),h:H.air});}
+    var ORD={go:0,warn:1,stop:2},WORDS={gust:'gusty',wave:'choppy',resid:'high water',alert:'marine alert up',rain:'wet',press:'pressure falling',
+      water:(wt&&J.normw[key]&&wt<J.normw[key])?'cold water':'warm water',air:(at&&J.norma[key]&&at<J.norma[key])?'cold air':'warm air'};
+    var fl=Object.keys(st).filter(function(n){return st[n]==='warn'||st[n]==='stop';}).sort(function(a,b){return ORD[st[b]]-ORD[st[a]];});
+    var head=fl.length?fl.slice(0,2).map(function(n){return WORDS[n];}).join(', ')+'.':'Calm and quiet.';head=head.charAt(0).toUpperCase()+head.slice(1);
+    var nx=(R[5].predictions||[]).filter(function(p){var d=p.t.slice(0,10);return d>key||(d===key&&tmin(p.t)>nowM);})[0];
+    var DAYN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var nxt=nx?(' Next '+(nx.type==='H'?'high':'low')+' <b>'+(nx.t.slice(0,10)!==key?DAYN[new Date(nx.t.slice(0,10)+'T12:00:00').getDay()]+' ':'')+clock(tmin(nx.t))+'</b>, '+f1(+nx.v)+' ft.'):'';
+    var old=J.summ[key]||{},label=old.label||new Date(key+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    J.days[key]={pred:pred,obs:obs,wind:[],press:[],wt:[],at:[],buoy:[]};
+    J.summ[key]={date:key,label:label,sun:old.sun||(J.summ[J.today]||{}).sun||[434,996],mode:'today',kick:'01 / Tide right now',big:f1(last[1]),
+      bigtx:'Tables said <b>'+f1(pmap[last[0]]!=null?pmap[last[0]]:last[1])+' ft</b> at '+clock(last[0])+': running <span class="r">'+sgn(resid)+' ft high</span>.'+nxt,
+      verdict:['info',head,'Live readings. Your call.'],resid:+resid.toFixed(2),peak:peak,tiles:tiles,asof:clock(last[0])+' · live'};
+    if(key>J.today){J.today=key;}if(key>inp.max)inp.max=key;
+    LIVE.ok=true;LIVE.busy=false;document.getElementById('stale').hidden=true;
+    if(!SS||SS.mode==='today'||SS.date===key)render(key);
+  }).catch(function(){LIVE.busy=false;
+    var vt=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles'}).format(new Date());
+    if(!LIVE.ok&&vt>J.today){var sb=document.getElementById('stale');sb.hidden=false;sb.textContent='Live readings are not loading right now, and this board was last refreshed '+J.built+'. Tap a tile for the live source.';}});
+}
+liveToday();
+document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible')liveToday();});
+setInterval(function(){if(document.visibilityState==='visible')liveToday();},6*60*1000);
+
 })();
 </script>
 <script>
