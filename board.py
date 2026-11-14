@@ -205,7 +205,8 @@ for k in sorted(days):
     summ[k] = S
 
 month_peak = max((s["peak"][1], k) for k, s in summ.items() if "peak" in s)
-J = {"days": days, "summ": summ, "today": k_today, "first": key(dt.datetime.combine(first, dt.time(), PST)), "last": key(dt.datetime.combine(ahead, dt.time(), PST)),
+BUILD = now.strftime("%Y%m%d%H%M%S")
+J = {"build": BUILD, "days": days, "summ": summ, "today": k_today, "first": key(dt.datetime.combine(first, dt.time(), PST)), "last": key(dt.datetime.combine(ahead, dt.time(), PST)),
      "bench": BENCH, "built": now.strftime("%b %-d, %-I:%M %p").replace("AM", "am").replace("PM", "pm"), "mpeak": month_peak}
 
 # ---------------- page ----------------
@@ -213,6 +214,7 @@ CSS = open(__file__).read().split("#CSS-START\n")[1].split("#CSS-END")[0] if Fal
 page = """<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"><meta http-equiv="Pragma" content="no-cache"><meta http-equiv="Expires" content="0">
 <title>Fort Worden Beach Board</title>
 <meta name="description" content="Daily cold-plunge conditions for Fort Worden, Port Townsend: measured vs predicted tide, wind, waves, pressure and water temperature.">
 <meta name="theme-color" content="#F6F5F1">
@@ -416,8 +418,24 @@ inp.addEventListener('change',function(){if(J.summ[inp.value])render(inp.value);
 var vt=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles'}).format(new Date());if(vt>J.today){var sb=document.getElementById('stale');sb.hidden=false;sb.textContent='Heads up: this board was last refreshed '+J.built+'. Today\u2019s readings aren\u2019t in yet, so tap a tile for live data.';}
 var h=(location.hash||'').replace('#d','');render(J.summ[h]?h:J.today);
 })();
+</script>
+<script>
+/* Always show the newest board: check the published version and reload if this copy is older. */
+(function(){
+var mine=JSON.parse(document.getElementById('d').textContent).build,busy=false;
+function check(){if(busy)return;busy=true;
+  fetch('version.txt?t='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():'';}).then(function(v){v=(v||'').trim();busy=false;
+    if(v&&v!==mine){var k='plunge-tried',t=null;try{t=sessionStorage.getItem(k);}catch(e){}if(t===v)return;try{sessionStorage.setItem(k,v);}catch(e){}location.replace(location.pathname+'?v='+v+location.hash);}}).catch(function(){busy=false;});}
+check();
+document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible')check();});
+window.addEventListener('pageshow',function(e){if(e.persisted)check();});
+window.addEventListener('focus',check);
+setInterval(function(){if(document.visibilityState==='visible')check();},10*60*1000);
+})();
 </script></body></html>"""
 page = page.replace("__DATA__", json.dumps(J, separators=(",", ":")).replace("</", "<\\/"))
 import os
-open(os.environ.get("BOARD_OUT", "index.html" if os.path.exists(".git") else "beach-board.html"), "w").write(page)
+out = os.environ.get("BOARD_OUT", "index.html" if os.path.exists(".git") else "beach-board.html")
+open(out, "w").write(page)
+open(os.path.join(os.path.dirname(os.path.abspath(out)), "version.txt"), "w").write(BUILD + "\n")
 print("built", k_today, "days", len(summ), "verdict", summ[k_today]["verdict"], f"{len(page)/1024:.0f} KB")

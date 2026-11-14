@@ -31,13 +31,13 @@ jobs:
         run: |
           git config user.name "plunge-board"
           git config user.email "actions@users.noreply.github.com"
-          git add index.html
+          git add index.html version.txt
           git diff --cached --quiet || git commit -m "Daily refresh $(TZ=America/Los_Angeles date +%F)"
           git push
       - name: Package the site
         run: |
           mkdir -p _site
-          cp index.html og.png og-icon.png .nojekyll _site/ 2>/dev/null || true
+          cp index.html version.txt og.png .nojekyll _site/ 2>/dev/null || true
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
