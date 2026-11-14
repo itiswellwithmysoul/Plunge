@@ -94,7 +94,8 @@ def ft(x): return ("−" if x < 0 else "") + f"{abs(x):.1f}"
 def band(v, g, r): return "go" if v < g else ("warn" if v < r else "stop")
 ORDER = {"go": 0, "warn": 1, "stop": 2, "info": -1, "none": -1}
 NAMES = {"resid": "high water", "gust": "gusts", "wave": "waves", "press": "falling pressure", "rain": "heavy rain", "alert": "a gale warning"}
-HREF = {"resid": "https://tidesandcurrents.noaa.gov/waterlevels.html?id=9444900", "gust": "https://www.ndbc.noaa.gov/met.html?id=9444900",
+HREF = {"resid": "https://tidesandcurrents.noaa.gov/waterlevels.html?id=9444900", "gust": "tidesandcurrents.noaa.gov/met.html
+?id=9444900",
         "wave": "https://www.ndbc.noaa.gov/station_page.php?station=46088", "alert": "https://forecast.weather.gov/shmrn.php?mz=PZZ134",
         "press": "https://tidesandcurrents.noaa.gov/met.html?id=9444900", "rain": "https://forecast.weather.gov/MapClick.php?lat=48.135&lon=-122.765",
         "water": "https://tidesandcurrents.noaa.gov/physocean.html?id=9444900", "wind": "https://tidesandcurrents.noaa.gov/met.html?id=9444900", "air": "https://tidesandcurrents.noaa.gov/met.html?id=9444900"}
