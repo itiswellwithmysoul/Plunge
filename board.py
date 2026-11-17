@@ -43,11 +43,16 @@ for p in ["wind", "air_pressure", "water_temperature", "air_temperature"]:
     met[p] = get(GAUGE + f"&product={p}&interval=h&begin_date={d8(first)}&end_date={d8(today)}").get("data", [])
 latest = {p: (get(GAUGE + f"&product={p}&date=latest").get("data") or [None])[0] for p in ["wind", "air_pressure", "water_temperature", "air_temperature"]}
 buoy_txt = get("https://www.ndbc.noaa.gov/data/realtime2/46088.txt", False).splitlines()
-pt = get(f"https://api.weather.gov/points/{LAT},{LON}")["properties"]
-hourly = get(pt["forecastHourly"])["properties"]["periods"]
-grid = get(pt["forecastGridData"])["properties"]
-alerts = [f["properties"]["event"] for f in get("https://api.weather.gov/alerts/active?zone=PZZ134")["features"]]
-alerts += [f["properties"]["event"] for f in get(f"https://api.weather.gov/alerts/active?point={LAT},{LON}")["features"]]
+NWS_DEFAULT = {"forecastHourly": "https://api.weather.gov/gridpoints/SEW/116,96/forecast/hourly", "forecastGridData": "https://api.weather.gov/gridpoints/SEW/116,96"}
+def nws_try(fn):
+    try: return fn()
+    except Exception: return None
+pt = nws_try(lambda: get(f"https://api.weather.gov/points/{LAT},{LON}")["properties"]) or NWS_DEFAULT
+hourly = nws_try(lambda: get(pt["forecastHourly"])["properties"]["periods"]) or []
+grid = nws_try(lambda: get(pt["forecastGridData"])["properties"])
+_a1 = nws_try(lambda: [f["properties"]["event"] for f in get("https://api.weather.gov/alerts/active?zone=PZZ134")["features"]])
+_a2 = nws_try(lambda: [f["properties"]["event"] for f in get(f"https://api.weather.gov/alerts/active?point={LAT},{LON}")["features"]])
+alerts = None if (_a1 is None and _a2 is None) else list(dict.fromkeys((_a1 or []) + (_a2 or [])))
 
 # ---------------- organise by day ----------------
 def key(t): return t.strftime("%Y-%m-%d")
@@ -114,10 +119,10 @@ def expand(vals, conv):
         n = int(b.replace("PT", "").replace("H", "")) if b.startswith("PT") and b.endswith("H") else 1
         out += [(s + dt.timedelta(hours=i), None if v["value"] is None else v["value"] * conv) for i in range(n)]
     return out
-gusts = expand(grid["windGust"]["values"], 1 / 1.609)
-qpf = expand(grid["quantitativePrecipitation"]["values"], 1 / 25.4)
+gusts = expand(grid["windGust"]["values"], 1 / 1.609) if grid else []
+qpf = expand(grid["quantitativePrecipitation"]["values"], 1 / 25.4) if grid else []
 hr = [(dt.datetime.fromisoformat(p["startTime"]).astimezone(PST), p) for p in hourly]
-hr_now = next((p for t, p in hr if t <= now < t + dt.timedelta(hours=1)), hr[0][1])
+hr_now = next((p for t, p in hr if t <= now < t + dt.timedelta(hours=1)), hr[0][1]) if hr else None
 
 # ---------------- temperature normals (last 10 years, +/-7 days around each date) ----------------
 def normals(product):
@@ -215,10 +220,14 @@ for k in sorted(days):
     tiles.append(tile("resid", "Above prediction", "Gauge", f"{resid:+.1f} ft", f"Peak {peak_h:.1f} ft · {min(rs):+.1f} to {max(rs):+.1f} today" if rs else "", st["resid"]))
     tiles[-1]["m"] = meter(peak_h, BENCH["mhhw"], "wl_max", None, " ft", 1, "wl")
     day_b = [b for b in D["buoy"] if rise <= b[0] <= sset]
-    if is_today:
+    if is_today and not gusts and D["wind"]:
+        w = D["wind"][-1]; st["gust"] = band(w[2], 20, 26)
+        tiles.append(tile("gust", "Gusts", "Gauge · measured", f"{w[2]:.0f} mph", f"{w[3]} {w[1]:.0f} mph now · forecast unavailable", st["gust"]))
+        tiles[-1]["m"] = meter(w[2], 15, "gust_max", None, " mph", 0, "gust")
+    elif is_today:
         g6 = max([g for t, g in gusts if now <= t <= now + dt.timedelta(hours=6) and g is not None] or [0])
         st["gust"] = band(g6, 20, 26)
-        tiles.append(tile("gust", "Gusts", "NWS · next 6 h", f"{g6:.0f} mph", f"{hr_now['windDirection']} {hr_now['windSpeed']} now", st["gust"]))
+        tiles.append(tile("gust", "Gusts", "NWS · next 6 h", f"{g6:.0f} mph", (f"{hr_now['windDirection']} {hr_now['windSpeed']} now" if hr_now else ""), st["gust"]))
         tiles[-1]["m"] = meter(g6, 15, "gust_max", None, " mph", 0, "gust")
     else:
         bg = [w[2] for w in D["wind"] if rise <= w[0] <= sset and w[2]]
@@ -232,8 +241,11 @@ for k in sorted(days):
     tiles.append(tile("wave", "Strait swell", "Buoy · 25 mi W" + ("" if is_today else " · day max"), f"{wv:.1f} ft" if wv is not None else "—", "New Dungeness buoy", st["wave"]))
     tiles[-1]["m"] = meter(wv, 0.5, "wave_max", None, " ft", 1, "wave")
     if is_today:
-        st["alert"] = "stop" if any(w in a for a in alerts for w in ("Gale Warning", "Storm Warning", "Hurricane")) else ("warn" if alerts else "go")
-        tiles.append(tile("alert", "Marine alerts", "NWS", alerts[0] if alerts else "None", " + ".join(alerts[1:]) or "Admiralty Inlet", st["alert"]))
+        if alerts is None:
+            tiles.append(tile("alert", "Marine alerts", "NWS", "Unavailable", "Weather Service not responding · tap to check", "info"))
+        else:
+            st["alert"] = "stop" if any(w in a for a in alerts for w in ("Gale Warning", "Storm Warning", "Hurricane")) else ("warn" if alerts else "go")
+            tiles.append(tile("alert", "Marine alerts", "NWS", alerts[0] if alerts else "None", " + ".join(alerts[1:]) or "Admiralty Inlet", st["alert"]))
     else:
         tiles.append(tile("alert", "Marine alerts", "NWS", "—", "past alerts aren't archived", "info"))
     if D["press"]:
@@ -247,9 +259,12 @@ for k in sorted(days):
         tiles.append(tile("press", "Air pressure", "Gauge" + ("" if is_today else " · day low"), f"{pv:.0f} mb", f"{lvl} · {effect}" + ("" if trend == "steady" else f" · {trend}"), st["press"]))
         tiles[-1]["m"] = meter(pv, 1013, "p_max", "p_min", " mb", 0, "p")
     if is_today:
-        r12 = sum(q for t, q in qpf if now <= t <= now + dt.timedelta(hours=12) and q is not None)
-        st["rain"] = band(r12, 0.5, 1.0)
-        tiles.append(tile("rain", "Rain", "NWS · next 12 h", f"{r12:.2f} in", "runoff raises bacteria", st["rain"]))
+        if qpf:
+            r12 = sum(q for t, q in qpf if now <= t <= now + dt.timedelta(hours=12) and q is not None)
+            st["rain"] = band(r12, 0.5, 1.0)
+            tiles.append(tile("rain", "Rain", "NWS · next 12 h", f"{r12:.2f} in", "runoff raises bacteria", st["rain"]))
+        else:
+            tiles.append(tile("rain", "Rain", "NWS · next 12 h", "Unavailable", "Weather Service not responding", "info"))
     else:
         tiles.append(tile("rain", "Rain", "Measured", "—", "no rain gauge on record nearby", "info"))
     if D["wt"]:
@@ -524,7 +539,7 @@ function liveToday(){
     gauge('product=water_temperature&date=latest'),gauge('product=air_temperature&date=latest'),
     gauge('product=predictions&datum=MLLW&interval=hilo&begin_date='+P.year+P.month+P.day+'&range=48'),
     nws(J.nws.hourly).catch(function(){return null;}),nws(J.nws.grid).catch(function(){return null;}),
-    nws('https://api.weather.gov/alerts/active?zone=PZZ134').catch(function(){return null;}),nws('https://api.weather.gov/alerts/active?point=48.135,-122.765').catch(function(){return null;})];
+    nws('https://api.weather.gov/alerts/active?zone=PZZ134').catch(function(){return null;}),nws('https://api.weather.gov/alerts/active?point=48.135,-122.765').catch(function(){return null;}),gauge('product=wind&date=latest').catch(function(){return null;})];
   Promise.all(reqs).then(function(R){
     var pred=(R[0].predictions||[]).map(function(p){return [tmin(p.t),+(+p.v).toFixed(2)];}),
         obs=(R[1].data||[]).filter(function(p){return p.v!=='';}).map(function(p){return [tmin(p.t),+(+p.v).toFixed(2)];});
@@ -547,10 +562,15 @@ function liveToday(){
       tiles.push({k:'gust',l:'Gusts',kk:'NWS · next 6 h',v:f0(g6)+' mph',s:hp?(hp.windDirection+' '+hp.windSpeed+' now'):'',st:st.gust,d:'',h:H.gust,m:mtrJ(g6,15,'gust_max',null,' mph',0,'gust')});
       var q=expand(R[7].properties.quantitativePrecipitation.values,1/25.4).filter(function(g){return g[0]>=nowT-36e5&&g[0]<=nowT+12*36e5&&g[1]!=null;});
       var r12=q.reduce(function(a,b){return a+b[1];},0);st.rain=bandJ(r12,0.5,1.0);var rainT={k:'rain',l:'Rain',kk:'NWS · next 12 h',v:r12.toFixed(2)+' in',s:'runoff raises bacteria',st:st.rain,d:'',h:H.rain};}
+    else{var gw=R[10]&&R[10].data&&R[10].data[0];
+      if(gw){var gsp=+gw.s*1.151,ggs=+gw.g*1.151;st.gust=bandJ(ggs,20,26);
+        tiles.push({k:'gust',l:'Gusts',kk:'Gauge · measured',v:f0(ggs)+' mph',s:gw.dr+' '+f0(gsp)+' mph now · forecast unavailable',st:st.gust,d:'',h:'https://tidesandcurrents.noaa.gov/met.html?id=9444900',m:mtrJ(ggs,15,'gust_max',null,' mph',0,'gust')});}
+      var rainT={k:'rain',l:'Rain',kk:'NWS · next 12 h',v:'Unavailable',s:'Weather Service not responding',st:'info',d:'',h:H.rain};}
     var wv=J.buoy;if(wv){st.wave=bandJ(wv.ft,1,3);tiles.push({k:'wave',l:'Strait swell',kk:'Buoy · 25 mi W',v:wv.ft.toFixed(1)+' ft',s:'New Dungeness · as of '+wv.at,st:st.wave,d:'',h:H.wave,m:mtrJ(wv.ft,0.5,'wave_max',null,' ft',1,'wave')});}
     if(R[8]||R[9]){var ev=[];[R[8],R[9]].forEach(function(a){if(a)a.features.forEach(function(f){if(ev.indexOf(f.properties.event)<0)ev.push(f.properties.event);});});
       st.alert=ev.some(function(a){return /Gale Warning|Storm Warning|Hurricane/.test(a);})?'stop':(ev.length?'warn':'go');
       tiles.push({k:'alert',l:'Marine alerts',kk:'NWS · live',v:ev[0]||'None',s:ev.slice(1).join(' + ')||'Admiralty Inlet',st:st.alert,d:'',h:H.alert});}
+    else{tiles.push({k:'alert',l:'Marine alerts',kk:'NWS',v:'Unavailable',s:'Weather Service not responding · tap to check',st:'info',d:'',h:H.alert});}
     var pr=(R[2].data||[]).filter(function(p){return p.v!=='';});
     if(pr.length){var pv=+pr[pr.length-1].v,p3=+pr[0].v,drop=pv-p3,lvl=pv<1000?'Stormy':(pv<1009?'Unsettled':(pv<1020?'Normal':'Settled'));
       st.press=pv<1000?'stop':((pv<1009||drop<=-3)?'warn':'go');var lift=(1013-pv)*0.39,trend=drop<=-1?'falling':(drop>=1?'rising':'steady');
