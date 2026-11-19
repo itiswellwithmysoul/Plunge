@@ -50,8 +50,18 @@ def nws_try(fn):
 pt = nws_try(lambda: get(f"https://api.weather.gov/points/{LAT},{LON}")["properties"]) or NWS_DEFAULT
 hourly = nws_try(lambda: get(pt["forecastHourly"])["properties"]["periods"]) or []
 grid = nws_try(lambda: get(pt["forecastGridData"])["properties"])
-_a1 = nws_try(lambda: [f["properties"]["event"] for f in get("https://api.weather.gov/alerts/active?zone=PZZ134")["features"]])
-_a2 = nws_try(lambda: [f["properties"]["event"] for f in get(f"https://api.weather.gov/alerts/active?point={LAT},{LON}")["features"]])
+def real_alerts(feats):
+    """Only genuine alerts for our area: drop tests, exercises and alerts whose zones aren't in Washington."""
+    out = []
+    for f in feats:
+        p = f["properties"]
+        if p.get("status") != "Actual" or p.get("messageType") == "Cancel": continue
+        zones = p.get("affectedZones") or []
+        if zones and not any(("/WAZ" in z or "/WAC" in z or "/PZZ" in z) for z in zones): continue
+        out.append(p["event"])
+    return out
+_a1 = nws_try(lambda: real_alerts(get("https://api.weather.gov/alerts/active?zone=PZZ134")["features"]))
+_a2 = nws_try(lambda: real_alerts(get(f"https://api.weather.gov/alerts/active?point={LAT},{LON}")["features"]))
 alerts = None if (_a1 is None and _a2 is None) else list(dict.fromkeys((_a1 or []) + (_a2 or [])))
 
 # ---------------- organise by day ----------------
@@ -100,7 +110,7 @@ def band(v, g, r): return "go" if v < g else ("warn" if v < r else "stop")
 ORDER = {"go": 0, "warn": 1, "stop": 2, "info": -1, "none": -1}
 NAMES = {"resid": "high water", "gust": "gusts", "wave": "swell", "press": "falling pressure", "rain": "heavy rain", "alert": "a gale warning"}
 HREF = {"resid": "https://tidesandcurrents.noaa.gov/waterlevels.html?id=9444900", "gust": "https://tidesandcurrents.noaa.gov/met.html?id=9444900",
-        "wave": "https://www.ndbc.noaa.gov/station_page.php?station=46088", "alert": "https://forecast.weather.gov/shmrn.php?mz=PZZ134",
+        "wave": "https://www.ndbc.noaa.gov/station_page.php?station=46088", "alert": "https://forecast.weather.gov/MapClick.php?lat=48.135&lon=-122.765",
         "press": "https://tidesandcurrents.noaa.gov/met.html?id=9444900", "rain": "https://forecast.weather.gov/MapClick.php?lat=48.135&lon=-122.765",
         "water": "https://tidesandcurrents.noaa.gov/physocean.html?id=9444900", "wind": "https://tidesandcurrents.noaa.gov/met.html?id=9444900", "air": "https://tidesandcurrents.noaa.gov/met.html?id=9444900"}
 def tile(k, label, kick, val, sub, s, dev=""): return {"k": k, "l": label, "kk": kick, "v": val, "s": sub, "st": s, "d": dev, "h": HREF[k]}
@@ -567,7 +577,7 @@ function liveToday(){
         tiles.push({k:'gust',l:'Gusts',kk:'Gauge · measured',v:f0(ggs)+' mph',s:gw.dr+' '+f0(gsp)+' mph now · forecast unavailable',st:st.gust,d:'',h:'https://tidesandcurrents.noaa.gov/met.html?id=9444900',m:mtrJ(ggs,15,'gust_max',null,' mph',0,'gust')});}
       var rainT={k:'rain',l:'Rain',kk:'NWS · next 12 h',v:'Unavailable',s:'Weather Service not responding',st:'info',d:'',h:H.rain};}
     var wv=J.buoy;if(wv){st.wave=bandJ(wv.ft,1,3);tiles.push({k:'wave',l:'Strait swell',kk:'Buoy · 25 mi W',v:wv.ft.toFixed(1)+' ft',s:'New Dungeness · as of '+wv.at,st:st.wave,d:'',h:H.wave,m:mtrJ(wv.ft,0.5,'wave_max',null,' ft',1,'wave')});}
-    if(R[8]||R[9]){var ev=[];[R[8],R[9]].forEach(function(a){if(a)a.features.forEach(function(f){if(ev.indexOf(f.properties.event)<0)ev.push(f.properties.event);});});
+    if(R[8]||R[9]){var ev=[];[R[8],R[9]].forEach(function(a){if(a)a.features.forEach(function(f){var pp=f.properties,zz=pp.affectedZones||[];if(pp.status!=='Actual'||pp.messageType==='Cancel')return;if(zz.length&&!zz.some(function(z){return z.indexOf('/WAZ')>=0||z.indexOf('/WAC')>=0||z.indexOf('/PZZ')>=0;}))return;if(ev.indexOf(pp.event)<0)ev.push(pp.event);});});
       st.alert=ev.some(function(a){return /Gale Warning|Storm Warning|Hurricane/.test(a);})?'stop':(ev.length?'warn':'go');
       tiles.push({k:'alert',l:'Marine alerts',kk:'NWS · live',v:ev[0]||'None',s:ev.slice(1).join(' + ')||'Admiralty Inlet',st:st.alert,d:'',h:H.alert});}
     else{tiles.push({k:'alert',l:'Marine alerts',kk:'NWS',v:'Unavailable',s:'Weather Service not responding · tap to check',st:'info',d:'',h:H.alert});}
